@@ -124,12 +124,18 @@ def color_non_matching(inputSent, decodedSent):
     return decodedSent
 
 
-def load_japanese_csv_data(fn, isHeader=False):
+def load_csv_data(fn, isHeader=False, isJapanese=False):
     data = []
     fieldnames = None
 
+    if isJapanese:
+        encoding = 'utf-8-sig'
+    else:
+        encoding = "utf-8"
+
+
     if isHeader:
-        with open(fn, newline='', encoding='utf-8-sig') as csvfile:
+        with open(fn, newline='', encoding=encoding) as csvfile:
             reader = csv.DictReader(csvfile)
             fieldnames = reader.fieldnames
         
@@ -137,13 +143,14 @@ def load_japanese_csv_data(fn, isHeader=False):
                 data.append(row)
 
     else:
-        with open(fn, newline='', encoding='utf-8-sig') as csvfile:
+        with open(fn, newline='', encoding=encoding) as csvfile:
             reader = csv.reader(csvfile)
 
             for row in reader:
                 data.append(row)
 
     return data, fieldnames
+
 
 
 def load_interaction_data(fn):
@@ -184,9 +191,19 @@ def load_keywords(fn):
     keywords = list(set(keywords))
     keywords.sort()
 
-    return keywordData, uttToKws, keywords, fieldnames
+
+    keywordToRelevance = {} # used for input to vectorizer
+    for row in keywordData:
+        kwTemp = [x for x in row["keywords"].split(";") if x != ""]
+        relTemp = [float(x) for x in row["relevances"].split(";") if x != ""]
+
+        for i in range(len(kwTemp)):
+            if kwTemp[i] not in keywordToRelevance:
+                keywordToRelevance[kwTemp[i]] = 0.0
+            keywordToRelevance[kwTemp[i]] += relTemp[i]
 
 
+    return keywordData, uttToKws, keywords, keywordToRelevance, fieldnames
 
 
 

@@ -170,7 +170,7 @@ class UtteranceVectorizer(object):
         self, allUtterances, importantNGramWeight=3.0, keywords=None,
         minCount=2, maxNGramLen=3, svdShare=0.5, makeKeywordsOneGrams=False,
         keywordCountThreshold=None, ngramComponents=None, keywordComponents=None,
-        runLSA=False):
+        runLSA=False, useStopwords=True, useNoisewords=True):
         """
         Takes in all the utterances, tokenizes and lemmatizes them, converts
         them into ngrams, and generates a dictionary of ngrams where each ngram
@@ -195,44 +195,52 @@ class UtteranceVectorizer(object):
         # Stopwords
         ########################################################################
         self.stopwords = set()
-        # self.stopwords = set(
-        #                      # [chr(u) for u in range(48,58)]+ # English digits
-        #                      [chr(u) for u in range(65,91)]+ # English capital letters
-        #                      [chr(u) for u in range(67,123)]+ # English lower letters
-        #                      # [chr(u) for u in range(65296,65306)]+ # fullwidth Romaji digits
-        #                      [chr(u) for u in range(65313,65339)]+ # fullwidth Romaji capital letters
-        #                      [chr(u) for u in range(65345,65371)]+ # fullwidth Romaji lower letters
-        #                      [chr(u) for u in range(12353,12439)]+ # hiragama characters
-        #                      [chr(u) for u in range(12449,12539)] # katakana characters
-        #                      )
+        self.wordsCannotLemmas = []
+        self.noisewords = []
 
-        # stopwords from https://github.com/stopwords-iso/stopwords-ja/blob/master/stopwords-ja.txt
-        self.stopwords = set(["あ","あっ","あの","あのかた","あの人","い","いう","います","う",
-                            "え","お","および","かつて","から","が","き","さ","し","する",
-                            "ず","せ","せる","そして","その他","その後","それぞれ","それで","た","ただし",
-                            "たち","ため","たり","だ","だっ","だれ","つ","て","で","でき","です","では",
-                            "でも","と","という","といった","とき","ところ","として","とともに","とも","と共に","どこ",
-                            "どの","なお","なかっ","ながら","に","において","における","について","にて","によって","により",
-                            "による","の","ので","は","ば","へ","ほか","ほとんど",
-                            "ほど","ます","また","または","まで","も","もの","ものの","や","よう","より","ら","ら","られる","ね",
-                            "れ","れる","を","ん","及び","彼","彼女","我々","特に","私","私達","貴方","貴方方","そうですね"
-                            ,"はい","はーい","ハワイ","。","、","？","あー","なるほど",'ござる',"いただく","ちょっと","やっぱり",
-                            "ぐらい","いただい","えーと","もちろん","こちら","あちら","そちら","それ","あれ","これ","そこ","ここ","あそこ"])
-        self.wordsCannotLemmas = ["あそうなんですよね","そうなんですよね","そうなんですね","そうなんですよ","あそうなんですね",
-                                "あそうなんですよ","あそうなんです","そうなんです","あそうですね","そうですよね"]
-        # added by Jiang, used to find the utterance that only contained these words.
-        self.noisewords = ["あ","あっ","あの","あのかた","あの人","い","いう","います","う",
-                            "え","お","および","かつて","から","が","き","さ","し","する",
-                            "ず","せ","せる","そして","その他","その後","それぞれ","それで","た","ただし",
-                            "たち","ため","たり","だ","だっ","だれ","つ","て","で","でき","です","では",
-                            "でも","と","という","といった","とき","ところ","として","とともに","とも","と共に","どこ",
-                            "どの","なお","なかっ","ながら","に","において","における","について","にて","によって","により",
-                            "による","の","ので","は","ば","へ","ほか","ほとんど",
-                            "ほど","ます","また","または","まで","も","もの","ものの","や","よう","より","ら","ら","られる","ね",
-                            "れ","れる","を","ん","及び","彼","彼女","我々","特に","私","私達","貴方","貴方方","そうですね"
-                            ,"はい","はーい","ハワイ","。","、","？","あー","なるほど",'ござる',"いただく","ちょっと","やっぱり",
-                            "ぐらい","いただい","えーと","ございます"]
+        if useStopwords:
+            # self.stopwords = set(
+            #                      # [chr(u) for u in range(48,58)]+ # English digits
+            #                      [chr(u) for u in range(65,91)]+ # English capital letters
+            #                      [chr(u) for u in range(67,123)]+ # English lower letters
+            #                      # [chr(u) for u in range(65296,65306)]+ # fullwidth Romaji digits
+            #                      [chr(u) for u in range(65313,65339)]+ # fullwidth Romaji capital letters
+            #                      [chr(u) for u in range(65345,65371)]+ # fullwidth Romaji lower letters
+            #                      [chr(u) for u in range(12353,12439)]+ # hiragama characters
+            #                      [chr(u) for u in range(12449,12539)] # katakana characters
+            #                      )
+
+            # stopwords from https://github.com/stopwords-iso/stopwords-ja/blob/master/stopwords-ja.txt
+            self.stopwords = set(["あ","あっ","あの","あのかた","あの人","い","いう","います","う",
+                                "え","お","および","かつて","から","が","き","さ","し","する",
+                                "ず","せ","せる","そして","その他","その後","それぞれ","それで","た","ただし",
+                                "たち","ため","たり","だ","だっ","だれ","つ","て","で","でき","です","では",
+                                "でも","と","という","といった","とき","ところ","として","とともに","とも","と共に","どこ",
+                                "どの","なお","なかっ","ながら","に","において","における","について","にて","によって","により",
+                                "による","の","ので","は","ば","へ","ほか","ほとんど",
+                                "ほど","ます","また","または","まで","も","もの","ものの","や","よう","より","ら","ら","られる","ね",
+                                "れ","れる","を","ん","及び","彼","彼女","我々","特に","私","私達","貴方","貴方方","そうですね"
+                                ,"はい","はーい","ハワイ","。","、","？","あー","なるほど",'ござる',"いただく","ちょっと","やっぱり",
+                                "ぐらい","いただい","えーと","もちろん","こちら","あちら","そちら","それ","あれ","これ","そこ","ここ","あそこ"])
+            self.wordsCannotLemmas = ["あそうなんですよね","そうなんですよね","そうなんですね","そうなんですよ","あそうなんですね",
+                                    "あそうなんですよ","あそうなんです","そうなんです","あそうですね","そうですよね"]
+        
+        if useNoisewords:
+            # added by Jiang, used to find the utterance that only contained these words.
+            self.noisewords = ["あ","あっ","あの","あのかた","あの人","い","いう","います","う",
+                                "え","お","および","かつて","から","が","き","さ","し","する",
+                                "ず","せ","せる","そして","その他","その後","それぞれ","それで","た","ただし",
+                                "たち","ため","たり","だ","だっ","だれ","つ","て","で","でき","です","では",
+                                "でも","と","という","といった","とき","ところ","として","とともに","とも","と共に","どこ",
+                                "どの","なお","なかっ","ながら","に","において","における","について","にて","によって","により",
+                                "による","の","ので","は","ば","へ","ほか","ほとんど",
+                                "ほど","ます","また","または","まで","も","もの","ものの","や","よう","より","ら","ら","られる","ね",
+                                "れ","れる","を","ん","及び","彼","彼女","我々","特に","私","私達","貴方","貴方方","そうですね"
+                                ,"はい","はーい","ハワイ","。","、","？","あー","なるほど",'ござる',"いただく","ちょっと","やっぱり",
+                                "ぐらい","いただい","えーと","ございます"]
+        
         print("stopwords", self.stopwords)
+
         ########################################################################
         # Find which n-grams occur and their count
         ########################################################################
@@ -630,19 +638,7 @@ if __name__ == '__main__':
     sessionDir = tools.create_session_dir("utteranceVectorizer")
     
     interactionData, interactionDataFieldnames = tools.load_interaction_data(interactionDataFn)
-    keywordData, uttToKws, keywordsList, _ = tools.load_keywords(keywordsFn)
-    
-    keywords = {}
-    for row in keywordData:
-        kwTemp = [x for x in row["keywords"].split(";") if x != ""]
-        relTemp = [float(x) for x in row["relevances"].split(";") if x != ""]
-
-        for i in range(len(kwTemp)):
-            if kwTemp[i] not in keywords:
-                keywords[kwTemp[i]] = 0.0
-            keywords[kwTemp[i]] += relTemp[i]
-
-
+    keywordData, uttToKws, keywordsList, keywordToRelevance, _ = tools.load_keywords(keywordsFn)
 
     if participant == "all_shopkeeper":
         utterances = [x["participant_speech"] for x in interactionData if (int(x["unique_id"]) == 1 or int(x["unique_id"]) == 3) and x["participant_speech"] != ""]
@@ -672,7 +668,7 @@ if __name__ == '__main__':
     uttVectorizer = UtteranceVectorizer(
         utterances,
         importantNGramWeight=1.0,
-        keywords=keywords,
+        keywords=keywordToRelevance,
         minCount=2, # 2 for just SK or cust - min times keyword accours
         maxNGramLen=maxNGramLen,
         svdShare=0.5,
