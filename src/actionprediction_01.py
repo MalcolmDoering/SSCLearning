@@ -1,3 +1,8 @@
+#
+# Created on Thu Jun 29 2023
+#
+# Copyright (c) 2023 Malcolm Doering
+#
 
 import csv
 import numpy as np
