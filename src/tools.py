@@ -33,11 +33,41 @@ user = "admin"
 password = "admin0"
 database = "2021_malcolm_multipleshopkeepers"
 ht_table_name = "ht_fusion_new_final_20230214"
-exp_table_name = "experiments_final"
+exp_table_name = "experiments_final_copy"
+
 
 bad_exp_num_list = [161, 162]
 
 data_file_path = "Z:/malcolm/2021_malcolm_multipleshopkeepers/"
+
+
+custIDToShkpIDs = {6: ["N", "K"],
+                   7: ["N", "G"],
+                   8: ["N", "K"],
+                   9: ["N", "K"],
+                   10: ["N", "K"],
+                   11: ["N", "G"],
+                   12: ["G", "N"],
+                   13: ["K", "N"],
+                   14: ["G", "N"],
+                   15: ["K", "N"],
+                   16: ["G", "N"],
+                   17: ["G", "N"],
+                   18: ["K", "N"],
+                   19: ["G", "N"],
+                   20: ["K", "N"],
+                   21: ["G", "N"],
+                   22: ["K", "N"],
+                   23: ["N", "G"],
+                   24: ["K", "N"],
+                   25: ["N", "G"],
+                   26: ["N", "K"],
+                   27: ["N", "G"],
+                   28: ["N", "K"],
+                   29: ["N", "G"],
+                   30: ["N", "G"]
+                   }
+
 
 
 

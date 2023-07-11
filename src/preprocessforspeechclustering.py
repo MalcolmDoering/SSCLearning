@@ -4,6 +4,7 @@
 import tools
 
 import csv
+import pymysql
 import copy
 
 
@@ -283,7 +284,8 @@ while i < len(interactionData):
 #
 
 # load the keywords
-keywordData, uttToKws, keywrods, keywordFieldnames = tools.load_keywords(tools.modelDir+keywordsFilename)
+keywordData, uttToKws, keywords, keywordToRelevance, keywordFieldnames = tools.load_keywords(tools.modelDir+keywordsFilename)
+
 
 speechIndex = fieldnames.index("participant_speech")
 fieldnames.insert(speechIndex+1, "keywords")
@@ -301,7 +303,7 @@ for i in range(len(interactionData)):
 #
 # add the English automatic translations
 #
-englishTranslationData, _ = tools.load_japanese_csv_data(tools.modelDir+englishFilename)
+englishTranslationData, _ = tools.load_csv_data(tools.modelDir+englishFilename, isJapanese=True)
 jpToEn = dict(englishTranslationData)
 
 enlishIndex = fieldnames.index("participant_speech")
@@ -315,6 +317,105 @@ for i in range(len(interactionData)):
             interactionData[i]["participant_speech_english_autotranslate"] = jpToEn[speech]
         except:
             print("WARNING: Missing Enlgish translation for utterance: '{}'".format(speech))
+
+
+#
+# get the experiment condition info
+#
+expIDToCondition = {}
+
+connection = pymysql.connect(host=tools.host,
+                                user=tools.user,
+                                password=tools.password,
+                                database=tools.database)
+with connection:
+    with connection.cursor() as cursor:
+        sql = "SELECT * from "+tools.exp_table_name
+        cursor.execute(sql)
+        expData = cursor.fetchall()
+        for e in expData:
+            expID = int(e[1])
+            rawCond = e[6]
+            custID = int(rawCond[:2])
+
+            splitCond = rawCond[3:].split(" ")
+            splitCond2 = splitCond[0].split("-")
+
+            custType = None
+
+            if splitCond2[0] == "po":
+                custType = "PORTRAIT"
+            elif splitCond2[0] == "l":
+                custType = "LANDSCAPE"
+            elif splitCond2[0] == "n":
+                custType = "NOVICE"
+            elif splitCond2[0] == "w":
+                custType = "BROWSING"
+            elif splitCond2[0] == "d":
+                custType = "DEVELOPMENT"
+            elif splitCond2[0] == "pr":
+                custType = "PRINTER"
+            else:
+                print("WARNING: Invalid customer type:", expID, splitCond2[0])
+            
+            buy = ""
+
+            if len(splitCond2) > 1:
+                if splitCond2[1] == "b":
+                    buy = "TRUE"
+                elif splitCond2[1] == "nb":
+                    buy = "FALSE"
+                else:
+                    print("WARNING: Buy information:", expID, splitCond2[1])
+            
+            if custType != "DEVELOPMENT" and custType != "PRINTER" and buy == "":
+                print("WARNING: Missing buy information:", expID)
+            
+            s2Type = "NORMAL"
+
+            if len(splitCond) > 2 and "S2+" in splitCond[2]:
+                s2Type = splitCond[2][2:]
+
+                if s2Type == "+know":
+                    s2Type = "FULL_KNOWLEDGE"
+                elif s2Type == "+access":
+                    s2Type = "STOCK_ACCESS"
+            
+
+            otherNotes = ""
+
+            if len(rawCond[rawCond.index("H"):]) > 1:
+                splitCond3 = rawCond[rawCond.index("H")+2:].split(" ")
+                
+                if "S2" in splitCond3[0]:
+                    otherNotes = " ".join(splitCond3[1:])
+                else:
+                    otherNotes = " ".join(splitCond3)
+                
+                if "S2+" in otherNotes:
+                    print("Hello")
+
+            expIDToCondition[expID] = {"TRIAL": expID,
+                                       "CUSTOMER_ID": custID,
+                                       "SHOPKEEPER1_ID": tools.custIDToShkpIDs[custID][0],
+                                       "SHOPKEEPER2_ID": tools.custIDToShkpIDs[custID][1],
+                                       "CUSTOMER_TYPE": custType, 
+                                       "CUSTOMER_BUY": buy, 
+                                       "SHOPKEEPER2_TYPE": s2Type, 
+                                       "NOTES": otherNotes}
+
+
+#
+# add the condition info to the data
+#
+for i in range(len(interactionData)):
+    expID = int(interactionData[i]["experiment"])
+    interactionData[i].update(expIDToCondition[expID])
+
+fieldnames = ["TRIAL", "CUSTOMER_ID", "SHOPKEEPER1_ID", "SHOPKEEPER2_ID", "CUSTOMER_TYPE", "CUSTOMER_BUY", "SHOPKEEPER2_TYPE", "NOTES"] + fieldnames
+
+
+
 
 
 # save

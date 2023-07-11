@@ -22,11 +22,21 @@ from sklearn.decomposition import TruncatedSVD
 from sklearn.metrics import pairwise_distances
 import pickle
 import sys
+import intervaltree
 sys.path.append('..')
 import copy
 
 import tools
 
+
+def check_if_sublist_consecutive(sublist, larger_list):
+    indices = []
+    sublist_length = len(sublist)
+    for i in range(len(larger_list) - sublist_length + 1):
+        if larger_list[i:i + sublist_length] == sublist:
+            indices.append((i, i + sublist_length))
+        
+    return indices
 
 
 class Token(object):
@@ -44,6 +54,19 @@ class Token(object):
 #                      [chr(u) for u in range(65345,65371)]+ # fullwidth Romaji lower letters
 #                      [chr(u) for u in range(12353,12439)]+ # hiragama characters
 #                      [chr(u) for u in range(12449,12539)] # katakana characters
+
+    def __eq__(token1, token2):
+        if token1.dictionaryForm == token2.dictionaryForm:
+            return True
+        else:
+            return False
+    
+    def __lt__(token1, token2):
+        if token1.dictionaryForm < token2.dictionaryForm:
+            return True
+        else:
+            return False
+
 
     def isNumber(self):
         """
@@ -132,9 +155,22 @@ class NGram(object):
         if len(ngram1.tokens) != len(ngram2.tokens):
             return False
         for i in range(len(ngram1.tokens)):
-            if ngram1.tokens[i].dictionaryForm != ngram2.tokens[i].dictionaryForm:
+            if ngram1.tokens[i] != ngram2.tokens[i]:
                 return False
-        return True
+        return True    
+
+    def __lt__(ngram1, ngram2):
+        if len(ngram1.tokens) < len(ngram2.tokens):
+            return True
+        elif len(ngram1.tokens) == len(ngram2.tokens):
+            for i in range(len(ngram1.tokens)):
+                if ngram1.tokens[i] < ngram2.tokens[i]:
+                    continue
+                else:
+                    return False
+            return True
+        else:
+            return False
 
     def __str__(self):
         tokenDictForm = [token.dictionaryForm for token in self.tokens]
@@ -142,6 +178,10 @@ class NGram(object):
 
     def __repr__(self):
         return str(self)
+    
+    def get_n(self):
+        return len(self.tokens)
+    
 
     # NOTE: By default, when sorting lists Python sorts lexicographically
     def keyForSorting(self):
@@ -168,7 +208,7 @@ class UtteranceVectorizer(object):
         self, allUtterances, keywordNGramWeight=1.0, numNGramWeight=1.0, keywords=None,
         minCount=2, maxNGramLen=3, svdShare=0.5, makeKeywordsOneGrams=False,
         keywordCountThreshold=None, ngramComponents=None, keywordComponents=None,
-        runLSA=False, useStopwords=True, useNoisewords=True):
+        runLSA=False, useStopwords=True, useBackchannels=True):
         """
         Takes in all the utterances, tokenizes and lemmatizes them, converts
         them into ngrams, and generates a dictionary of ngrams where each ngram
@@ -188,14 +228,15 @@ class UtteranceVectorizer(object):
         self.keywordNGramWeight = keywordNGramWeight
         keywords = dict() if keywords is None else keywords
         keywordCountThreshold = 0 if keywordCountThreshold is None else keywordCountThreshold
+        self.backchannelPlaceholder = "<backchannel>"
+        self.useBackchannels = useBackchannels
         self.initializeMeCab()
 
         ########################################################################
         # Stopwords
         ########################################################################
-        self.stopwords = set()
-        self.wordsCannotLemmas = []
-        self.noisewords = []
+        self.stopwords = []
+        self.backchannels = []
 
         if useStopwords:
             # self.stopwords = set(
@@ -210,7 +251,7 @@ class UtteranceVectorizer(object):
             #                      )
 
             # stopwords from https://github.com/stopwords-iso/stopwords-ja/blob/master/stopwords-ja.txt
-            self.stopwords = set(["あ","あっ","あの","あのかた","あの人","い","いう","います","う",
+            self.stopwords = ["あ","あっ","あの","あのかた","あの人","い","いう","います","う",
                                 "え","お","および","かつて","から","が","き","さ","し","する",
                                 "ず","せ","せる","そして","その他","その後","それぞれ","それで","た","ただし",
                                 "たち","ため","たり","だ","だっ","だれ","つ","て","で","でき","です","では",
@@ -221,13 +262,10 @@ class UtteranceVectorizer(object):
                                 "れ","れる","を","ん","及び","彼","彼女","我々","特に","私","私達","貴方","貴方方","そうですね"
                                 ,"はい","はーい","ハワイ","。","、","？","あー","なるほど",'ござる',"いただく","ちょっと","やっぱり",
                                 "ぐらい","いただい","えーと","もちろん","こちら","あちら","そちら","それ","あれ","これ","そこ","ここ","あそこ",
-                                "ました", "ません"]) # this line added my Malcolm
-            self.wordsCannotLemmas = ["あそうなんですよね","そうなんですよね","そうなんですね","そうなんですよ","あそうなんですね",
-                                    "あそうなんですよ","あそうなんです","そうなんです","あそうですね","そうですよね"]
-        
-        if useNoisewords:
-            # added by Jiang, used to find the utterance that only contained these words.
-            self.noisewords = ["あ","あっ","あの","あのかた","あの人","い","いう","います","う",
+                                "ました", "ません"] # this line added my Malcolm
+            
+            # formerly "noisewords"
+            self.stopwords += ["あ","あっ","あの","あのかた","あの人","い","いう","います","う",
                                 "え","お","および","かつて","から","が","き","さ","し","する",
                                 "ず","せ","せる","そして","その他","その後","それぞれ","それで","た","ただし",
                                 "たち","ため","たり","だ","だっ","だれ","つ","て","で","でき","です","では",
@@ -239,82 +277,96 @@ class UtteranceVectorizer(object):
                                 ,"はい","はーい","ハワイ","。","、","？","あー","なるほど",'ござる',"いただく","ちょっと","やっぱり",
                                 "ぐらい","いただい","えーと","ございます"]
         
+        if self.useBackchannels:
+            # added by Jiang, used to find the utterance that only contained these words.
+            self.backchannels = ["あそうなんですよね","そうなんですよね","そうなんですね","そうなんですよ","あそうなんですね",
+                                    "あそうなんですよ","あそうなんです","そうなんです","あそうですね","そうですよね"]
+        
+
         print("stopwords", self.stopwords)
 
-        ########################################################################
-        # Find which n-grams occur and their count
-        ########################################################################
-        print("finding n-grams")
-        # 2D Dict: nGramSize (int) -> (nGramText (str) -> count (int))
-        ngrams = {n:{} for n in range(1, self.maxNGramLen+1)}
-        lemmasLen = []
-        for utt in allUtterances:
 
-            # lemmatize the words
-            uttLemmas = self.lemmatize_utterance(utt)
-            lemmasLen.append(len(uttLemmas))
-            for n in range(1, self.maxNGramLen+1):
-                for wordI in range(len(uttLemmas)-(n-1)):
-                    ngram = NGram()
-                    for i in range(n):
-                        ngram.addToken(uttLemmas[wordI + i])
-                    if ngram not in ngrams[n]:
-                        ngrams[n][ngram] = 0
-                    ngrams[n][ngram] += 1
-        print(np.mean(lemmasLen),np.std(lemmasLen))
-        # for i in ngrams:
-        #     for ngram in ngrams[i]:
-        #         for token in ngram.tokens:
-        #             print(token.dictionaryForm+' ',end='',file=open('test.txt','a+'))
-        #         print(ngrams[i][ngram],file=open('test.txt','a+'))
         ########################################################################
-        # Process the keywords
+        # get ngrams for stopwords
         ########################################################################
-        print("processing keywords")
+        print("finding stopword n-grams...")
+        self.stopwordNgramToSubNgrams = {}
+        self.biggestStopwordNgrams = []
+
+        stopwordNgrams = self.get_ngrams_from_lemma_lists(self.lemmatize_utterances(self.stopwords))
+        stopwordNgrams = [sorted(ngramList, reverse=True) for ngramList in stopwordNgrams]
+
+        for ngramList in stopwordNgrams:
+            if len(ngramList) > 0:
+                biggestNgram = ngramList[0]
+                self.biggestStopwordNgrams.append(biggestNgram)
+
+                if biggestNgram.get_n() > self.maxNGramLen:
+                    continue
+
+                self.stopwordNgramToSubNgrams[biggestNgram] = ngramList
         
-        processedKeywords = dict() # nGramText (str) -> count (int)
-        for kw, count in keywords.items():
-            kwLemmas = self.lemmatize_utterance(kw) # Split it
-            if (makeKeywordsOneGrams):
-                for kwLemma in kwLemmas:
-                    ngram = NGram() # By default, all keywords will be 1-grams
-                    ngram.addToken(kwLemma)
-                    if ngram not in processedKeywords:
-                        processedKeywords[ngram] = 0
-                    processedKeywords[ngram] += count
-            else:
-                if (len(kwLemmas) > maxNGramLen):  continue # The Keyword Is Too Long
-                ngram = NGram() # By default, all keywords will be n-grams
-                for kwLemma in kwLemmas:
-                    ngram.addToken(kwLemma)
-                if ngram not in processedKeywords:
-                    processedKeywords[ngram] = 0
-                processedKeywords[ngram] += count
-        # i = 0
-        # for kw, count in sortedKWs:
-        #     print(i, count, kw)
-        #     i+=1
-        kwsToRemove = set()
-        for kw, count in processedKeywords.items():
-            if count <= keywordCountThreshold: kwsToRemove.add(kw)
-        for kw in kwsToRemove:
-            del processedKeywords[kw]
+        self.biggestStopwordNgrams.sort(reverse=True)
+        
 
-        sortedKWs = sorted(list(processedKeywords.items()), key=lambda x: x[1], reverse=True)
-        # print("Keywords: ", sortedKWs)
-        # for keyword in sortedKWs:
-        #     print(keyword)
+        
+        ########################################################################
+        # get the keyword ngrams
+        ########################################################################
+        print("processing keywords...")
+        keywordNgrams = []
+
+        for kw, rel in keywords.items():
+            if rel >= keywordCountThreshold:
+                kwLemmas = self.lemmatize_utterance(kw) # Split it
+                
+                if (len(kwLemmas) > maxNGramLen):  
+                    continue # The Keyword Is Too Long
+            
+                kwNgram = NGram()
+                for l in kwLemmas:
+                    kwNgram.addToken(l)
+                
+                if kwNgram not in keywordNgrams:
+                    keywordNgrams.append(kwNgram)
+
 
         ########################################################################
-        # Create the vectorization dict by removing all words that occur
-        # infrequently
+        # Find which n-grams occur in the utterances and their counts
+        ########################################################################
+        print("finding n-grams...")
+        uttNgrams = self.get_ngrams_from_lemma_lists(self.lemmatize_utterances(allUtterances))
+        uttNgramCounts = {}
+
+        for u in uttNgrams:
+            for ngram in u:
+                if ngram not in uttNgramCounts:
+                    uttNgramCounts[ngram] = 0
+                uttNgramCounts[ngram] += 1
+        
+
+        ########################################################################
+        # get the number ngrams
+        ########################################################################
+        numberNgrams = []
+        for ngram in uttNgramCounts.keys():
+            if ngram.isNumber():
+                numberNgrams.append(ngram)
+
+
+        ########################################################################
+        # Create the vectorization dicts
         ########################################################################
         self.ngramToIndex = {}
         self.indexToNgram = {}
+
         self.keywordToIndex = {}
         self.indexToKeyword = {}
+        self.keywordIndexRange = [None, None]
 
-        numberNGrams = [] # All number nGrams of count >= minCount
+        self.numberToIndex = {}
+        self.indexToNumber = {}
+        self.numberIndexRange = [None, None]
 
         # To make the end matrix a bit more understandable, I will assign IDs in order of
         # the length of the gram, and in alphabetic order by pronunciation
@@ -322,47 +374,87 @@ class UtteranceVectorizer(object):
         # that is used is the pronunciation of the token as written in the
         # first utterance that contained that ngram
         index = 0
-        for n in range(1, self.maxNGramLen+1):
-            grams = list(ngrams[n].keys())
-            grams.sort(key=lambda x: x.keyForSorting())
-            for gram in grams:
-                if ngrams[n][gram] >= minCount:
-                    self.ngramToIndex[gram] = index
-                    self.indexToNgram[index] = gram
-                    index += 1
-                    if (gram.isNumber()):
-                        numberNGrams.append(gram)
-        self.numWords = index
-        print("NumWords: %d" % self.numWords)
 
-        # Assign keywords indices
-        keywords = list(processedKeywords.keys())
-        # All numbers are by default also keywords
-        keywords.extend(numberNGrams)
-        # print("Keywords: ", keywords)
-        keywords.sort(key=lambda x: x.keyForSorting())
-        for kw in keywords:
-            if kw in self.ngramToIndex: # Only allow keywords that occur more than minCount times in the training data
-                self.keywordToIndex[kw] = index
-                self.indexToKeyword[index] = kw
+        # add the backchannel placeholder if we're using backchannels
+        if self.useBackchannels:
+            self.ngramToIndex[self.backchannelPlaceholder] = index
+            self.indexToNgram[index] = self.backchannelPlaceholder
+            index += 1
+
+        # add the normal ngrams
+        sortedNgrams = sorted(list(uttNgramCounts.keys()))
+        removedNgrams = []
+
+        for ngram in sortedNgrams:
+            if uttNgramCounts[ngram] < minCount:
+                # remove ngrams that don't occur frequently
+                removedNgrams.append(ngram)
+                continue
+            
+            self.ngramToIndex[ngram] = index
+            self.indexToNgram[index] = ngram
+            index += 1
+        
+        self.numNormalNgrams = len(self.ngramToIndex)
+        print("Num. normal n-grams: %d" % self.numNormalNgrams)
+
+
+        # add the keywords
+        sortedKeywordNgrams = sorted(list(keywordNgrams))
+        removedKeywordNgrams = []
+        self.keywordIndexRange[0] = index
+
+        for ngram in sortedKeywordNgrams:
+            if ngram in uttNgramCounts and uttNgramCounts[ngram] > minCount:
+                self.keywordToIndex[ngram] = index
+                self.indexToKeyword[index] = ngram
                 index += 1
-        self.numKeywords = index - self.numWords
-        print("NumKeywords: %d" % self.numKeywords)
+            else:
+                removedKeywordNgrams.append(ngram)
+        
+        self.keywordIndexRange[1] = index
+        
+        self.numKeywordNgrams = len(self.keywordToIndex)
+        print("Num. keyword n-grams: %d" % self.numKeywordNgrams)
+
+
+        # add the numbers
+        sortedNumberNgrams = sorted(list(numberNgrams))
+        removedNumberNgrams = []
+        self.numberIndexRange[0] = index
+
+        for ngram in sortedNumberNgrams:
+            if ngram in uttNgramCounts and uttNgramCounts[ngram] > minCount:
+                self.numberToIndex[ngram] = index
+                self.indexToNumber[index] = ngram
+                index += 1
+            else:
+                removedNumberNgrams.append(ngram)
+        
+        self.numberIndexRange[1] = index
+
+        self.numNumberNgrams = len(self.numberToIndex)
+        print("Num. number n-grams: %d" % self.numNumberNgrams)
+
+
+        self.numAllNgrams = self.numNormalNgrams + self.numKeywordNgrams + self.numNumberNgrams
+        print("Num. all n-grams: %d" % self.numAllNgrams)
+
 
         ########################################################################
         # Compute the LSA transformation
         ########################################################################
-        print("getting bag of words matrix")
-        # Get the bag of words matrix
-        uttVecs = self.get_utterance_vectors(allUtterances)
-        # separate the ngram bag of words and the keywords bag of words, as we
-        # will apply LSA separately to them
-        ngramUttVecs = uttVecs[:,:self.numWords]
-        keywordUttVecs = uttVecs[:,self.numWords:]
-        # print("NgramBOW", ngramUttVecs, ngramUttVecs.shape)
-        # print("KeywordBOW", keywordUttVecs, keywordUttVecs.shape)
-
         if runLSA:
+            print("getting bag of words matrix")
+            # Get the bag of words matrix
+            uttVecs = self.get_utterance_vectors(allUtterances)
+            # separate the ngram bag of words and the keywords bag of words, as we
+            # will apply LSA separately to them
+            ngramUttVecs = uttVecs[:,:self.numNormalNgrams]
+            keywordUttVecs = uttVecs[:,self.numNormalNgrams:]
+            # print("NgramBOW", ngramUttVecs, ngramUttVecs.shape)
+            # print("KeywordBOW", keywordUttVecs, keywordUttVecs.shape)
+
             print("fitting TFIDFTransformers")
             # Use it to fit a TfidfTransformer (i.e. calculate an IDF matrix)
             self.ngramTfidfTransformer = TfidfTransformer()
@@ -412,6 +504,63 @@ class UtteranceVectorizer(object):
             self.keywordLsaModel.fit(keywordTfidfUttVecs)
 
             self.totalComponents = nGramNumDim + keywordNumDim
+    
+
+    def split_lemmas_by_stopwords(self, lemmas):
+        splits = []
+        
+        if len(lemmas) == 0:
+            return splits
+        
+        rangesToRemove = []
+
+        for ngram in self.biggestStopwordNgrams:
+            indices = check_if_sublist_consecutive(ngram.tokens, lemmas)
+            
+            for i in indices:
+                rangesToRemove.append(i)
+        
+        intervalsToRemove = intervaltree.IntervalTree.from_tuples(rangesToRemove)
+        intervalsToRemove.merge_overlaps(strict=False)
+
+        intervalsToKeep = intervaltree.IntervalTree.from_tuples([(0, len(lemmas))])        
+        for interval in intervalsToRemove:
+            intervalsToKeep.chop(interval.begin, interval.end)
+        
+        for interval in intervalsToKeep:
+            splits.append(lemmas[interval.begin:interval.end])
+
+        return splits
+    
+
+    def get_ngrams_from_lemmas(self, lemmas):
+        ngrams = []
+
+        for n in range(1, self.maxNGramLen+1):
+            for wordI in range(len(lemmas)-(n-1)):
+                ngram = NGram()
+                for i in range(n):
+                    ngram.addToken(lemmas[wordI + i])
+                ngrams.append(ngram)
+        
+        return ngrams
+
+
+    def get_ngrams_from_lemma_lists(self, lemmasList):
+        # find the n grams that occur in the input strings
+        lemmasNgrams = []
+
+        for lemmas in lemmasList:
+            ngrams = []
+
+            splits = self.split_lemmas_by_stopwords(lemmas)
+            for split in splits:
+                ngrams += self.get_ngrams_from_lemmas(split)
+            
+            lemmasNgrams.append(ngrams)
+        
+        return lemmasNgrams
+
 
     def initializeMeCab(self):
         self.mecab = MeCab.Tagger('-Ochasen')
@@ -420,6 +569,16 @@ class UtteranceVectorizer(object):
     def deinitializeMeCab(self):
         self.mecab = None
         self.isMeCabInitialized = False
+    
+    # def wordBreak(self, s):
+    #     n=len(s)
+    #     dp=[False]*(n+1)
+    #     dp[0]=True
+    #     for i in range(n):
+    #         for j in range(i+1,n+1):
+    #             if(dp[i] and (s[i:j] in self.noisewords)):
+    #                 dp[j]=True
+    #     return dp[-1]
 
     # NOTE (amal): There is an important decision to be made here in terms of
     # how we lemmatize words, because the same lemmas are considered the same
@@ -447,18 +606,6 @@ class UtteranceVectorizer(object):
     #
     # NOTE that the code for this discussion is written in the __hash__ and __eq__
     # methods of the Token class.
-    def wordBreak(self, s):
-        
-        n=len(s)
-        dp=[False]*(n+1)
-        dp[0]=True
-        for i in range(n):
-            for j in range(i+1,n+1):
-                if(dp[i] and (s[i:j] in self.noisewords)):
-                    dp[j]=True
-        return dp[-1]
-
-
     def lemmatize_utterance(self, utt):
         # One row of analyzedTextMatrix corresponds to one token, and the
         # columns correspond to different aspects of that token
@@ -471,26 +618,25 @@ class UtteranceVectorizer(object):
         if not self.isMeCabInitialized:
             self.initializeMeCab()
 
-        onlyContainStopwords = self.wordBreak(utt)
+        #onlyContainStopwords = self.wordBreak(utt)
 
         # remove words that can not be lemmas from the utterance.
         # since the words in the list is in order of their length,
         # so it's ok to use a for loop here?
-        uttLen = len(utt)
-        temp_utt= utt
-        if not onlyContainStopwords:
-            for word in self.wordsCannotLemmas:
-                temp_utt = ''.join(temp_utt.split(word))
-            if not len(temp_utt)< 5:
-                utt = temp_utt
+        # uttLen = len(utt)
+        # temp_utt= utt
+        # #if not onlyContainStopwords:
+        # for word in self.wordsCannotLemmas:
+        #     temp_utt = ''.join(temp_utt.split(word))
+        # if not len(temp_utt)< 5:
+        #     utt = temp_utt
 
-        # in case the word is only with stop words after remove
-        onlyContainStopwords = self.wordBreak(utt)
+        # # in case the word is only with stop words after remove
+        # onlyContainStopwords = self.wordBreak(utt)
         
         analyzedTextStr = self.mecab.parse(utt)
-
-
         analyzedTextMatrix = [line.split("\t") for line in analyzedTextStr.split("\n")]
+        
         uttLemmas = []
         wordI = 0
 
@@ -498,23 +644,23 @@ class UtteranceVectorizer(object):
         # if utt only contain stopwords, lemmas it anyway
         # otherwise only lemmas the useful parts
 
-        if onlyContainStopwords:
-            while len(analyzedTextMatrix[wordI]) > 1:
+        # if onlyContainStopwords:
+        #     while len(analyzedTextMatrix[wordI]) > 1:
+        #         token = Token(analyzedTextMatrix[wordI][0],
+        #                         analyzedTextMatrix[wordI][1],
+        #                         analyzedTextMatrix[wordI][2],
+        #                         analyzedTextMatrix[wordI][3])
+        #         uttLemmas.append(token)
+        #         wordI += 1
+        # else:
+        while len(analyzedTextMatrix[wordI]) > 1:
+            if analyzedTextMatrix[wordI][2] not in self.stopwords:
                 token = Token(analyzedTextMatrix[wordI][0],
-                                analyzedTextMatrix[wordI][1],
-                                analyzedTextMatrix[wordI][2],
-                                analyzedTextMatrix[wordI][3])
+                            analyzedTextMatrix[wordI][1],
+                            analyzedTextMatrix[wordI][2],
+                            analyzedTextMatrix[wordI][3])
                 uttLemmas.append(token)
-                wordI += 1
-        else:
-            while len(analyzedTextMatrix[wordI]) > 1:
-                if analyzedTextMatrix[wordI][2] not in self.stopwords:
-                    token = Token(analyzedTextMatrix[wordI][0],
-                                analyzedTextMatrix[wordI][1],
-                                analyzedTextMatrix[wordI][2],
-                                analyzedTextMatrix[wordI][3])
-                    uttLemmas.append(token)
-                wordI += 1
+            wordI += 1
 
         # if utt in ['黒のみのご用意でございます。',
         #         'そちら分かりかねも調べさせていただきます。',
@@ -543,6 +689,16 @@ class UtteranceVectorizer(object):
         #     print()
         #     print('----------------')
         return uttLemmas
+    
+    
+    def lemmatize_utterances(self, utterances):
+        lemmaLists = []
+
+        for utt in utterances:
+            lemmaLists.append(self.lemmatize_utterance(utt))
+        
+        return lemmaLists
+    
 
     def get_utterance_vector(self, utt):
         """
@@ -550,43 +706,42 @@ class UtteranceVectorizer(object):
         how many times that gram appears.
         """
 
-        uttVec = np.zeros(self.numWords + self.numKeywords)
-
+        uttVec = np.zeros(self.numAllNgrams)
         uttLemmas = self.lemmatize_utterance(utt)
+        uttNgrams = self.get_ngrams_from_lemma_lists([uttLemmas])[0]
 
-        for n in range(1, self.maxNGramLen+1):
-            for wordI in range(len(uttLemmas)-(n-1)):
-                ngram = NGram()
-                for i in range(n):
-                    ngram.addToken(uttLemmas[wordI + i])
-                if ngram in self.ngramToIndex:
-                    if ngram.isNumber():
-                        #weight = 1 # self.importantNGramWeight # removed the extra weight since I instead make all numbers keywords
-                        weight = self.numNGramWeight
-                        # print("Number: ", ngram)
-                    else:
-                        weight = 1
-                    uttVec[self.ngramToIndex[ngram]] += 1*weight # uttVec[self.ngramToIndex[ngram]] = 1*weight #
-                if ngram in self.keywordToIndex:
-                    # uttVec[self.keywordToIndex[ngram]] += 1*self.importantNGramWeight # uttVec[self.keywordToIndex[ngram]] = 1*self.importantNGramWeight #
-                    # NOTE: There is no point multiplying a keyword entry in the
-                    # appended part of the vector by a weight, because we run
-                    # LSA separately on that so the result will be the same as
-                    # if we did not multiply that matrix by a constant
-                    uttVec[self.keywordToIndex[ngram]] += 1 # uttVec[self.keywordToIndex[ngram]] = 1 #
-                else:
-                    # print("The following ngram does not exist in the dictionary (likely means it occured < minCount times) %s" % ngram)
-                    pass
+        # TODO remove stopwords, check for backchannels...
+
+        for ngram in uttNgrams:    
+            if ngram in self.ngramToIndex:
+                uttVec[self.ngramToIndex[ngram]] += 1
+                
+            if ngram in self.keywordToIndex:
+                uttVec[self.keywordToIndex[ngram]] += 1
+            
+            if ngram in self.numberToIndex:
+                uttVec[self.numberToIndex[ngram]] += 1
+
+            else:
+                # print("The following ngram does not exist in the dictionary (likely means it occured < minCount times) %s" % ngram)
+                pass
         
-        # ngramList = [self.indexToNgram[i] for i in range(len(self.numWords)) if i>0]
+        # apply the weights
+        uttVec[self.keywordIndexRange[0]:self.keywordIndexRange[1]] *= self.keywordNGramWeight
+        uttVec[self.numberIndexRange[0]:self.numberIndexRange[1]] *= self.numNGramWeight
+        
+
         return uttVec
 
     def get_utterance_vectors(self, uttList):
-        uttVecs = np.zeros((len(uttList), self.numWords + self.numKeywords))
+        #uttVecs = np.zeros((len(uttList), self.numNormalNgrams + self.numKeywords))
+        uttVecs = []
 
         for i in range(len(uttList)):
             utt = uttList[i]
-            uttVecs[i] = self.get_utterance_vector(utt)
+            uttVecs.append(self.get_utterance_vector(utt))
+
+        uttVecs = np.asarray(uttVecs)
 
         return uttVecs
 
@@ -595,8 +750,8 @@ class UtteranceVectorizer(object):
 
         # partition the ngram and keyword components of the bag of words, to
         # do separate LSA
-        ngramUttVecs = uttVecs[:,:self.numWords]
-        keywordUttVecs = uttVecs[:,self.numWords:]
+        ngramUttVecs = uttVecs[:,:self.numNormalNgrams]
+        keywordUttVecs = uttVecs[:,self.numNormalNgrams:]
 
         # Important question -- should I be doing a fit_transform here or just
         # a transform? If I do fit_transform, I am getting the actual TFIDF
@@ -678,8 +833,6 @@ if __name__ == '__main__':
         keywordCountThreshold=5,  # 5 for just SK or cust
         # ngramComponents=ngramComponents,
         # keywordComponents=keywordComponents,
-        useStopwords=False,
-        useNoisewords=False
     )
 
     print("pickling the utterance vectorizer...")
@@ -737,12 +890,13 @@ if __name__ == '__main__':
     # Save NGram To Index Mapping
     with open(os.path.join(sessionDir+outputDictFilename), "w", newline='', encoding='utf-8-sig', errors='ignore') as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow(['index', 'ngram'])
+        writer.writerow(['set', 'index', 'ngram'])
 
-        for i in range(uttVectorizer.numWords):
-            writer.writerow([i, '{:}'.format(str(uttVectorizer.indexToNgram[i]))])
-        for i in range(uttVectorizer.numWords,uttVectorizer.numWords+uttVectorizer.numKeywords):
-            writer.writerow([i, '{:}'.format(str(uttVectorizer.indexToKeyword[i]))])
-        
+        for i, ngram in uttVectorizer.indexToNgram.items():
+            writer.writerow(["normal", i, '{:}'.format(str(uttVectorizer.indexToNgram[i]))])
+        for i, ngram in uttVectorizer.indexToKeyword.items():
+            writer.writerow(["keyword", i, '{:}'.format(str(uttVectorizer.indexToKeyword[i]))])
+        for i, ngram in uttVectorizer.indexToNumber.items():
+            writer.writerow(["number", i, '{:}'.format(str(uttVectorizer.indexToNumber[i]))])
 
     print("Done.")

@@ -3,7 +3,7 @@ import csv
 import numpy as np
 import pickle
 from collections import OrderedDict
-
+import pymysql
 
 import tools
 import utterancevectorizer
@@ -17,7 +17,6 @@ speechClustersFilename = "20230620-132426_speechClustering/all_shopkeeper_cos_3g
 keywordsFilename = tools.modelDir + "20230609-141854_unique_utterance_keywords.csv"
 uttVectorizerDir = tools.modelDir + "20230627-163306_actionPredictionPreprocessing/"
 stoppingLocationClusterDir = tools.modelDir + "20230627_stoppingLocationClusters/"
-
 
 sessionDir = tools.create_session_dir("actionPredictionPreprocessing")
 
@@ -69,6 +68,42 @@ for row in speechClusterData:
 
 
 #
+# load the stopping location clusers
+#
+print("Loading the stopping location clusters...")
+
+shkpStopLocClustIDToName = {}
+shkpStopLocClustData, _ = tools.load_csv_data(stoppingLocationClusterDir+"shopkeeper1StoppingLocationClusters.csv", isHeader=True) # shkp 1 and 2 stopping location clusters are the same
+for data in shkpStopLocClustData:
+    shkpStopLocClustIDToName[int(data["idx"])] = data["label"]
+shkpStopLocClustIDToName[0] = "None"
+
+custStopLocClustIDToName = {}
+custStopLocClustData, _ = tools.load_csv_data(stoppingLocationClusterDir+"customerStoppingLocationClusters.csv", isHeader=True) 
+for data in custStopLocClustData:
+    custStopLocClustIDToName[int(data["idx"])] = data["label"]
+custStopLocClustIDToName[0] = "None"
+
+
+#
+# add human readable spatial info to the interaction data
+#
+for i in range(len(interactionData)):
+    interactionData[i]["customer2_currentLocation_name"] = custStopLocClustIDToName[int(interactionData[i]["customer2_currentLocation"])]
+    interactionData[i]["customer2_motionOrigin_name"] = custStopLocClustIDToName[int(interactionData[i]["customer2_motionOrigin"])]
+    interactionData[i]["customer2_motionTarget_name"] = custStopLocClustIDToName[int(interactionData[i]["customer2_motionTarget"])]
+
+    interactionData[i]["shopkeeper1_currentLocation_name"] = shkpStopLocClustIDToName[int(interactionData[i]["shopkeeper1_currentLocation"])]
+    interactionData[i]["shopkeeper1_motionOrigin_name"] = shkpStopLocClustIDToName[int(interactionData[i]["shopkeeper1_motionOrigin"])]
+    interactionData[i]["shopkeeper1_motionTarget_name"] = shkpStopLocClustIDToName[int(interactionData[i]["shopkeeper1_motionTarget"])]
+
+    interactionData[i]["shopkeeper2_currentLocation_name"] = shkpStopLocClustIDToName[int(interactionData[i]["shopkeeper2_currentLocation"])]
+    interactionData[i]["shopkeeper2_motionOrigin_name"] = shkpStopLocClustIDToName[int(interactionData[i]["shopkeeper2_motionOrigin"])]
+    interactionData[i]["shopkeeper2_motionTarget_name"] = shkpStopLocClustIDToName[int(interactionData[i]["shopkeeper2_motionTarget"])]
+
+
+
+#
 # find the action clusters (unique combinations of shopkeeper locations and speech clusters)
 # and add the speech and action cluster data to the action sequence data
 #
@@ -111,11 +146,22 @@ for row in interactionData:
             actionKeyToActionID[actionKey] = actionID
             actionIDToAction[actionID] = action
         
+        actionID = actionKeyToActionID[actionKey]
+        
         row["SHOPKEEPER_2_ACTION_CLUSTER"] = actionID
         row["SHOPKEEPER_2_SPATIAL_INFO"] = spatialInfo
+        row["SHOPKEEPER_2_SPATIAL_INFO_NAME"] = shkpStopLocClustIDToName[spatialInfo]
         row["SHOPKEEPER_2_SPEECH_CLUSTER"] = speechClusterID
         row["SHOPKEEPER_2_REPRESENTATIVE_UTTERANCE"] = speechClustIDToRepUtt[speechClusterID]
         row["SHOPKEEPER_2_SPEECH_CLUSTER_IS_JUNK"] = speechClustIDIsJunk[speechClustID]
+    
+    else:
+        row["SHOPKEEPER_2_ACTION_CLUSTER"] = -1
+        row["SHOPKEEPER_2_SPATIAL_INFO"] = -1
+        row["SHOPKEEPER_2_SPATIAL_INFO_NAME"] = "None"
+        row["SHOPKEEPER_2_SPEECH_CLUSTER"] = -1
+        row["SHOPKEEPER_2_REPRESENTATIVE_UTTERANCE"] = ""
+        row["SHOPKEEPER_2_SPEECH_CLUSTER_IS_JUNK"] = 0
 
 
 #
@@ -177,6 +223,8 @@ for i in range(len(interactionData)-1):
         outputSpeechClusterIDs.append(nextAction["SHOPKEEPER_2_SPEECH_CLUSTER"])
         outputSpatialInfo.append(nextAction["SHOPKEEPER_2_SPATIAL_INFO"])
         toIgnore.append(nextAction["SHOPKEEPER_2_SPEECH_CLUSTER_IS_JUNK"])
+
+
     else:
         outputActionIDs.append(-1)
         outputSpeechClusterIDs.append(-1)
@@ -414,23 +462,6 @@ shkpUttVecShape = list(shkpUttToVector.values())[0].shape
 shkpUttToVector[""] = np.zeros(shkpUttVecShape)
 
 
-
-#
-# load the stopping location clusers
-#
-print("Loading the stopping location clusters...")
-
-shkpStopLocClustIDToName = {}
-shkpStopLocClustData, _ = tools.load_csv_data(stoppingLocationClusterDir+"shopkeeper1StoppingLocationClusters.csv", isHeader=True) # shkp 1 and 2 stopping location clusters are the same
-for data in shkpStopLocClustData:
-    shkpStopLocClustIDToName[int(data["idx"])] = data["label"]
-
-custStopLocClustIDToName = {}
-custStopLocClustData, _ = tools.load_csv_data(stoppingLocationClusterDir+"customerStoppingLocationClusters.csv", isHeader=True) 
-for data in custStopLocClustData:
-    custStopLocClustIDToName[int(data["idx"])] = data["label"]
-
-
 #
 # create the input vectors
 #
@@ -525,11 +556,11 @@ for input in inputs:
 #
 # save the vectors
 #
-outputActionIDs = np.asarray(outputActionIDs, dtype=np.int8)
-outputSpeechClusterIDs = np.asarray(outputSpeechClusterIDs, dtype=np.int8)
-outputSpatialInfo = np.asarray(outputSpatialInfo, dtype=np.int8)
-toIgnore = np.asarray(toIgnore, dtype=np.int8)
-isHidToImitate = np.asarray(isHidToImitate, dtype=np.int8)
+outputActionIDs = np.asarray(outputActionIDs, dtype=np.int16)
+outputSpeechClusterIDs = np.asarray(outputSpeechClusterIDs, dtype=np.int16)
+outputSpatialInfo = np.asarray(outputSpatialInfo, dtype=np.int16)
+toIgnore = np.asarray(toIgnore, dtype=np.int16)
+isHidToImitate = np.asarray(isHidToImitate, dtype=np.int16)
 
 np.save(sessionDir+"/outputActionIDs", outputActionIDs)
 np.save(sessionDir+"/outputSpeechClusterIDs", outputSpeechClusterIDs)
@@ -542,13 +573,17 @@ inputVectorsNonSpeech = np.stack(inputVectorsNonSpeech, axis=0)
 inputVectorsSpeech = np.stack(inputVectorsSpeech, axis=0)
 inputVectorsCombined = np.stack(inputVectorsCombined, axis=0)
 
-inputVectorsNonSpeech = inputVectorsNonSpeech.astype(np.int8)
+inputVectorsNonSpeech = inputVectorsNonSpeech.astype(np.int16)
 inputVectorsSpeech = inputVectorsSpeech.astype(np.float32)
 inputVectorsCombined = inputVectorsCombined.astype(np.float32)
 
-np.save(sessionDir+"/inputVectorsNonSpeech", inputVectorsNonSpeech)
-np.save(sessionDir+"/inputVectorsSpeech", inputVectorsSpeech)
+#np.save(sessionDir+"/inputVectorsNonSpeech", inputVectorsNonSpeech)
+#np.save(sessionDir+"/inputVectorsSpeech", inputVectorsSpeech)
 np.save(sessionDir+"/inputVectorsCombined", inputVectorsCombined)
+
+
+
+
 
 
 #
@@ -557,6 +592,7 @@ np.save(sessionDir+"/inputVectorsCombined", inputVectorsCombined)
 
 # generate fieldnames
 inputFieldnames = list(inputs[4][0].keys()) # the first one without None
+inputFieldnames.pop(inputFieldnames.index("experiment")) # no need to put this info for each input step
 inputFieldnamesAllSteps = []
 
 for i in range(inputLen):
@@ -564,15 +600,19 @@ for i in range(inputLen):
         inputFieldnamesAllSteps.append("{}_{}".format(i, fieldname))
 
 outputFieldnames = list(outputs[0].keys())
+outputFieldnames.pop(outputFieldnames.index("experiment"))
 outputFieldnamesForHumanReadable = ["y_{}".format(fieldname) for fieldname in outputFieldnames]
 
-inputOutputFieldnames = inputFieldnamesAllSteps + outputFieldnamesForHumanReadable
+inputOutputFieldnames = ["TRIAL", "CUSTOMER_ID", "CUSTOMER_TYPE", "BUY", "SHOPKEEPER_2_TYPE", "NOTES"] + inputFieldnamesAllSteps + outputFieldnamesForHumanReadable
 
 # generate the rows to be saved to csv
 inputsAndOutputsForCsv = []
 
 for i in range(len(inputs)):
     row = OrderedDict()
+
+    row["TRIAL"] = outputs[i]["experiment"]
+
 
     # input
     input = inputs[i]
@@ -583,6 +623,7 @@ for i in range(len(inputs)):
         else:
             for fieldname in inputFieldnames:
                 row["{}_{}".format(j, fieldname)] = input[j][fieldname]
+            
     
     # output
     for fieldname in outputFieldnames:
@@ -590,8 +631,23 @@ for i in range(len(inputs)):
             row["y_{}".format(fieldname)] = outputs[i][fieldname]
         except:
             row["y_{}".format(fieldname)] = ""
+        
 
     inputsAndOutputsForCsv.append(row)
+
+
+
+
+
+
+
+
+
+for i in range(len(inputsAndOutputsForCsv)):
+    inputsAndOutputsForCsv[i].update(expIDToCondition[int(interactionData[i]["experiment"])])
+
+inputOutputFieldnames = [] + inputOutputFieldnames
+
 
 tools.save_interaction_data(inputsAndOutputsForCsv, sessionDir+"humanReadableInputsOutputs.csv", inputOutputFieldnames)
 
