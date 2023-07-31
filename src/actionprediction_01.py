@@ -5,17 +5,21 @@
 #
 
 import csv
+import os
 import numpy as np
 import pickle
 from collections import OrderedDict
 from sklearn.metrics import accuracy_score
 
 import tools
+
+
+os.environ["CUDA_VISIBLE_DEVICES"] = str(0)
 import learning
 
 
 
-evaluationDataDir = "E:/eclipse-log/20230628-122249_actionPredictionPreprocessing/"
+evaluationDataDir = tools.dataDir + "20230628-122249_actionPredictionPreprocessing/"
 
 interactionDataFilename = "20230626-162715_speechPreprocessing/20230623_SSC_3_trueMotionTargets_3_speechMotionCombined.csv"
 speechClustersFilename = "20230620-132426_speechClustering/all_shopkeeper_cos_3gram- speech_clusters.csv"
