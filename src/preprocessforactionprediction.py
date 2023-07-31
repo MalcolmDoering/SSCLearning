@@ -6,16 +6,16 @@ from collections import OrderedDict
 import pymysql
 
 import tools
-import utterancevectorizer
+import utterancevectorizer2
 
 
 trainUttVectorizer = False
 
 
-interactionDataFilename = "20230626-162715_speechPreprocessing/20230623_SSC_3_trueMotionTargets_3_speechMotionCombined.csv"
-speechClustersFilename = "20230620-132426_speechClustering/all_shopkeeper_cos_3gram- speech_clusters.csv"
+interactionDataFilename = "20230710-151337_speechPreprocessing/20230623_SSC_3_trueMotionTargets_3_speechMotionCombined.csv"
+speechClustersFilename = "20230731-113400_speechClustering/all_shopkeeper- speech_clusters.csv"
 keywordsFilename = tools.modelDir + "20230609-141854_unique_utterance_keywords.csv"
-uttVectorizerDir = tools.modelDir + "20230627-163306_actionPredictionPreprocessing/"
+uttVectorizerDir = tools.dataDir + "20230731-123214_actionPredictionPreprocessing/"
 stoppingLocationClusterDir = tools.modelDir + "20230627_stoppingLocationClusters/"
 
 sessionDir = tools.create_session_dir("actionPredictionPreprocessing")
@@ -365,9 +365,10 @@ if trainUttVectorizer:
     #
     print("Creating customer utterance vectorizer...")
 
-    custUttVectorizer = utterancevectorizer.UtteranceVectorizer(
+    custUttVectorizer = utterancevectorizer2.UtteranceVectorizer(
         customerUtterances,
-        importantNGramWeight=1.0,
+        keywordNGramWeight=1,
+        numNGramWeight=1,
         keywords=custKeywordToRelevance,
         minCount=2, # 2 for just SK or cust - min times keyword accours
         maxNGramLen=maxNGramLen,
@@ -376,7 +377,7 @@ if trainUttVectorizer:
         keywordCountThreshold=5,  # 5 for just SK or cust
         runLSA=True,
         useStopwords=False,
-        useNoisewords=False
+        useBackchannels=False
     )
 
     custUttVectors = custUttVectorizer.get_lsa_vectors(customerUtterances)
@@ -390,9 +391,10 @@ if trainUttVectorizer:
     #
     # train the shopkeeper speech vectorizer
     #
-    shkpUttVectorizer = utterancevectorizer.UtteranceVectorizer(
+    shkpUttVectorizer = utterancevectorizer2.UtteranceVectorizer(
         shopkeeperUtterances,
-        importantNGramWeight=1.0,
+        keywordNGramWeight=1,
+        numNGramWeight=1,
         keywords=shkpKeywordToRelevance,
         minCount=2, # 2 for just SK or cust - min times keyword accours
         maxNGramLen=maxNGramLen,
@@ -401,7 +403,7 @@ if trainUttVectorizer:
         keywordCountThreshold=5,  # 5 for just SK or cust
         runLSA=True,
         useStopwords=False,
-        useNoisewords=False
+        useBackchannels=False
     )
 
     shkpUttVectors = shkpUttVectorizer.get_lsa_vectors(shopkeeperUtterances)
@@ -594,16 +596,20 @@ np.save(sessionDir+"/inputVectorsCombined", inputVectorsCombined)
 inputFieldnames = list(inputs[4][0].keys()) # the first one without None
 inputFieldnames.pop(inputFieldnames.index("experiment")) # no need to put this info for each input step
 inputFieldnamesAllSteps = []
+fieldnamesNotToDuplicate = ["TRIAL", "CUSTOMER_ID", "SHOPKEEPER1_ID", "SHOPKEEPER2_ID", "CUSTOMER_TYPE", "CUSTOMER_BUY", "SHOPKEEPER2_TYPE", "NOTES"]
 
 for i in range(inputLen):
     for fieldname in inputFieldnames:
-        inputFieldnamesAllSteps.append("{}_{}".format(i, fieldname))
+        if fieldname not in fieldnamesNotToDuplicate:
+            inputFieldnamesAllSteps.append("{}_{}".format(i, fieldname))
 
 outputFieldnames = list(outputs[0].keys())
 outputFieldnames.pop(outputFieldnames.index("experiment"))
-outputFieldnamesForHumanReadable = ["y_{}".format(fieldname) for fieldname in outputFieldnames]
+outputFieldnamesForHumanReadable = ["y_{}".format(fieldname) for fieldname in outputFieldnames if fieldname not in fieldnamesNotToDuplicate]
 
-inputOutputFieldnames = ["TRIAL", "CUSTOMER_ID", "CUSTOMER_TYPE", "BUY", "SHOPKEEPER_2_TYPE", "NOTES"] + inputFieldnamesAllSteps + outputFieldnamesForHumanReadable
+inputOutputFieldnames = fieldnamesNotToDuplicate + inputFieldnamesAllSteps + outputFieldnamesForHumanReadable
+
+
 
 # generate the rows to be saved to csv
 inputsAndOutputsForCsv = []
@@ -611,26 +617,29 @@ inputsAndOutputsForCsv = []
 for i in range(len(inputs)):
     row = OrderedDict()
 
-    row["TRIAL"] = outputs[i]["experiment"]
-
+    for fieldname in fieldnamesNotToDuplicate:
+        row[fieldname] = outputs[i][fieldname]
 
     # input
     input = inputs[i]
     for j in range(len(input)):
         if input[j] == None:
             for fieldname in inputFieldnames:
-                row["{}_{}".format(j, fieldname)] = ""
+                if fieldname not in fieldnamesNotToDuplicate:
+                    row["{}_{}".format(j, fieldname)] = ""
         else:
             for fieldname in inputFieldnames:
-                row["{}_{}".format(j, fieldname)] = input[j][fieldname]
+                if fieldname not in fieldnamesNotToDuplicate:
+                    row["{}_{}".format(j, fieldname)] = input[j][fieldname]
             
     
     # output
     for fieldname in outputFieldnames:
-        try:
-            row["y_{}".format(fieldname)] = outputs[i][fieldname]
-        except:
-            row["y_{}".format(fieldname)] = ""
+        if fieldname not in fieldnamesNotToDuplicate:
+            try:
+                row["y_{}".format(fieldname)] = outputs[i][fieldname]
+            except:
+                row["y_{}".format(fieldname)] = ""
         
 
     inputsAndOutputsForCsv.append(row)
@@ -638,15 +647,10 @@ for i in range(len(inputs)):
 
 
 
+#for i in range(len(inputsAndOutputsForCsv)):
+#    inputsAndOutputsForCsv[i].update(expIDToCondition[int(interactionData[i]["experiment"])])
 
-
-
-
-
-for i in range(len(inputsAndOutputsForCsv)):
-    inputsAndOutputsForCsv[i].update(expIDToCondition[int(interactionData[i]["experiment"])])
-
-inputOutputFieldnames = [] + inputOutputFieldnames
+#inputOutputFieldnames = [] + inputOutputFieldnames
 
 
 tools.save_interaction_data(inputsAndOutputsForCsv, sessionDir+"humanReadableInputsOutputs.csv", inputOutputFieldnames)

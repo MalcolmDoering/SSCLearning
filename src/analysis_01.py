@@ -526,16 +526,16 @@ for iId in runIds:
 
 # for baseline 1
 
-"""save_1_metric_graph(runIdToData, "Loss Ave")
-save_1_metric_graph(runIdToData, "Action Accuracy")
+# save_1_metric_graph(runIdToData, "Loss Ave")
+# save_1_metric_graph(runIdToData, "Action Accuracy")
 
-save_1_metric_graph(runIdToData, "Action 1 Precision")
-save_1_metric_graph(runIdToData, "Action 1 Recall")
-save_1_metric_graph(runIdToData, "Action 1 F-score")
+# save_1_metric_graph(runIdToData, "Action 1 Precision")
+# save_1_metric_graph(runIdToData, "Action 1 Recall")
+# save_1_metric_graph(runIdToData, "Action 1 F-score")
 
-save_1_metric_graph(runIdToData, "Action 0 Precision")
-save_1_metric_graph(runIdToData, "Action 0 Recall")
-save_1_metric_graph(runIdToData, "Action 0 F-score")"""
+# save_1_metric_graph(runIdToData, "Action 0 Precision")
+# save_1_metric_graph(runIdToData, "Action 0 Recall")
+# save_1_metric_graph(runIdToData, "Action 0 F-score")
 
 
 # for baseline 2
