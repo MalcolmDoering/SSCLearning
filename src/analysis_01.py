@@ -22,8 +22,11 @@ from matplotlib.pyplot import subplots
 import tools
 
 
-#expLogName = "20230706-163139_actionPrediction_01/baseline1" # binary prediction of whether S2 acts or not
-expLogName = "20230707-174656_actionPrediction_02/baseline2" # prediction of S2 actions
+#expLogName = "20230731-173119_actionPrediction_02/baseline1" # binary prediction of whether S2 acts or not
+#expLogName = "20230731-173119_actionPrediction_02/baseline2" # prediction of S2 actions
+
+#expLogName = "20230801-134051_actionPrediction_02_/baseline1" # binary prediction of whether S2 acts or not
+expLogName = "20230801-134051_actionPrediction_02_/baseline2" # prediction of S2 actions
 
 
 
@@ -515,6 +518,9 @@ for iId in runIds:
 #
 # graph the data
 #
+
+
+ 
 #plot_2_conditions_3_metrics(runIdToData, runIds, "Cost Ave", "DB Substring Correct Ave", "DB Substring Correct All")
 
 #plot_2_conditions_3_metrics(runIdToData, runIds, "Cam. Address Correct", "Attr. Address Correct", "Both Addresses Correct")
@@ -525,24 +531,25 @@ for iId in runIds:
 
 
 # for baseline 1
+if "baseline1" in expLogName:
+    save_1_metric_graph(runIdToData, "Loss Ave")
+    save_1_metric_graph(runIdToData, "Action Accuracy")
 
-# save_1_metric_graph(runIdToData, "Loss Ave")
-# save_1_metric_graph(runIdToData, "Action Accuracy")
+    save_1_metric_graph(runIdToData, "Action 1 Precision")
+    save_1_metric_graph(runIdToData, "Action 1 Recall")
+    save_1_metric_graph(runIdToData, "Action 1 F-score")
 
-# save_1_metric_graph(runIdToData, "Action 1 Precision")
-# save_1_metric_graph(runIdToData, "Action 1 Recall")
-# save_1_metric_graph(runIdToData, "Action 1 F-score")
-
-# save_1_metric_graph(runIdToData, "Action 0 Precision")
-# save_1_metric_graph(runIdToData, "Action 0 Recall")
-# save_1_metric_graph(runIdToData, "Action 0 F-score")
+    save_1_metric_graph(runIdToData, "Action 0 Precision")
+    save_1_metric_graph(runIdToData, "Action 0 Recall")
+    save_1_metric_graph(runIdToData, "Action 0 F-score")
 
 
 # for baseline 2
-save_1_metric_graph(runIdToData, "Loss Ave")
-save_1_metric_graph(runIdToData, "Action Accuracy")
-save_1_metric_graph(runIdToData, "Speech Accuracy")
-save_1_metric_graph(runIdToData, "Spatial Accuracy")
+elif "baseline2" in expLogDir:
+    save_1_metric_graph(runIdToData, "Loss Ave")
+    save_1_metric_graph(runIdToData, "Action Accuracy")
+    save_1_metric_graph(runIdToData, "Speech Accuracy")
+    save_1_metric_graph(runIdToData, "Spatial Accuracy")
 
 
 

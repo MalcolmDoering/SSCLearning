@@ -12,10 +12,10 @@ import utterancevectorizer2
 trainUttVectorizer = False
 
 
-interactionDataFilename = "20230710-151337_speechPreprocessing/20230623_SSC_3_trueMotionTargets_3_speechMotionCombined.csv"
+interactionDataFilename = "20230802-135533_processForSpeechClustering/20230623_SSC_3_trueMotionTargets_3_speechMotionCombined.csv"
 speechClustersFilename = "20230731-113400_speechClustering/all_shopkeeper- speech_clusters.csv"
 keywordsFilename = tools.modelDir + "20230609-141854_unique_utterance_keywords.csv"
-uttVectorizerDir = tools.dataDir + "20230731-123214_actionPredictionPreprocessing/"
+uttVectorizerDir = tools.dataDir + "20230731-125515_actionPredictionPreprocessing/"
 stoppingLocationClusterDir = tools.modelDir + "20230627_stoppingLocationClusters/"
 
 sessionDir = tools.create_session_dir("actionPredictionPreprocessing")

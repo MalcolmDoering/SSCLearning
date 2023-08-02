@@ -40,7 +40,7 @@ keywordsFilename = "20230609-141854_unique_utterance_keywords.csv"
 englishFilename = "20230609-141854_unique_utterances_english_autotranslations.csv"
 
 
-sessionDir = tools.create_session_dir("speechPreprocessing")
+sessionDir = tools.create_session_dir("processForSpeechClustering")
 
 
 
@@ -60,6 +60,12 @@ motOri = None
 motStartTime = None
 motEndTime = None
 
+indicesToDelete = []
+
+customerFirstAppearance = False
+currExpID = None
+prevExpID = None
+
 for i in range(len(interactionData)):
 
     #if i == 2477:
@@ -67,6 +73,17 @@ for i in range(len(interactionData)):
 
     data = interactionData[i]
     t = float(data["time"])
+    expID = int(data["experiment"])
+    uniqueID = int(data["unique_id"])
+
+    if expID != currExpID:
+        prevExpID = currExpID
+        currExpID = expID
+        customerFirstAppearance = False
+    
+    if uniqueID == 2 and not customerFirstAppearance:
+        customerFirstAppearance = True
+    
 
     if float(data["motion_start_time"]) != 0 and int(data["unique_id"]) == hidToImitate:
         # this is a movement action for the participant we want to imitate
@@ -118,6 +135,22 @@ for i in range(len(interactionData)):
         data["shopkeeper2_currentLocation"] = data["shopkeeper2_motionOrigin"]
         data["shopkeeper2_motionOrigin"] = "0"
         data["shopkeeper2_motionTarget"] = "0"
+
+
+    # sometimes overwriting detected motions could result in actions with no speech an no motion, so we can delete these.
+    # we can also delete shopkeeper first appearance actions that don't contain speech or motion, because we don't need to imitate these.
+    # make sure not to delete the customer first appearance, because this is something the shopkeeper might react to.
+    if data["participant_speech"] == "" and not customerFirstAppearance:
+        if uniqueID == 1 and int(data["shopkeeper1_motionOrigin"]) == 0:
+            indicesToDelete.append(i)
+        elif uniqueID == 2 and int(data["customer_motionOrigin"]) == 0:
+            indicesToDelete.append(i)
+        elif uniqueID == 3 and int(data["shopkeeper2_motionOrigin"]) == 0:
+            indicesToDelete.append(i)
+
+indicesToDelete.reverse()
+for i in indicesToDelete:
+    interactionData.pop(i)
 
 
 for i in range(len(interactionData)):
