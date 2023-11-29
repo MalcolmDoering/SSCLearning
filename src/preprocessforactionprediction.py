@@ -12,14 +12,19 @@ import utterancevectorizer2
 trainUttVectorizer = False
 
 
-interactionDataFilename = "20230802-135533_processForSpeechClustering/20230623_SSC_3_trueMotionTargets_3_speechMotionCombined.csv"
-speechClustersFilename = "20230731-113400_speechClustering/all_shopkeeper- speech_clusters.csv"
+interactionDataFilename = "20230807-141847_processForSpeechClustering/20230623_SSC_3_trueMotionTargets_3_speechMotionCombined.csv"
+speechClustersFilename = "20230731-113400_speechClustering/all_shopkeeper- speech_clusters - levenshtein normalized medoid.csv"
 keywordsFilename = tools.modelDir + "20230609-141854_unique_utterance_keywords.csv"
-uttVectorizerDir = tools.dataDir + "20230731-125515_actionPredictionPreprocessing/"
+uttVectorizerDir = tools.dataDir + "20230807-191124_actionPredictionPreprocessing/"
 stoppingLocationClusterDir = tools.modelDir + "20230627_stoppingLocationClusters/"
 
 sessionDir = tools.create_session_dir("actionPredictionPreprocessing")
 
+
+uniqueIDToIdentifier = {1: "shopkeeper1",
+                        2: "customer2",
+                        3: "shopkeeper2"
+                        }
 
 
 #
@@ -52,10 +57,13 @@ for row in speechClusterData:
     speech = row["Utterance"]
     speechClustID = int(row["Cluster.ID"])
 
-    if speech not in speechClustIDToUtts:
+    if speechClustID not in speechClustIDToUtts:
         speechClustIDToUtts[speechClustID] = []
-        uttToSpeechClustID[speech] = speechClustID 
         speechClustIDIsJunk[speechClustID] = int(row["Is.Junk"])
+
+    
+    if speech not in uttToSpeechClustID:
+        uttToSpeechClustID[speech] = speechClustID 
     
     speechClustIDToUtts[speechClustID].append(speech)
 
@@ -102,6 +110,24 @@ for i in range(len(interactionData)):
     interactionData[i]["shopkeeper2_motionTarget_name"] = shkpStopLocClustIDToName[int(interactionData[i]["shopkeeper2_motionTarget"])]
 
 
+#
+# remove null actions (actions with no speech and no motion - e.g. "first appearance" actions)
+#
+removedNullActions = []
+
+for i in reversed(range(len(interactionData))):
+    identifier = uniqueIDToIdentifier[int(interactionData[i]["unique_id"])]
+
+    if identifier == "customer2":
+        continue
+    
+    if interactionData[i]["participant_speech"] == "" and interactionData[i]["{}_motionTarget_name".format(identifier)] == "None" and interactionData[i]["{}_motionOrigin_name".format(identifier)] == "None":
+        removedNullActions.append(interactionData.pop(i))
+
+
+tools.save_interaction_data(interactionData, sessionDir+"20230623_SSC_3_trueMotionTargets_3_speechMotionCombined_humanReadable.csv", interactionData[0].keys() )
+
+
 
 #
 # find the action clusters (unique combinations of shopkeeper locations and speech clusters)
@@ -121,10 +147,10 @@ for row in interactionData:
 
 
         if speech in uttToSpeechClustID:
-            speechClusterID = uttToSpeechClustID[speech]
+            speechClustID = uttToSpeechClustID[speech]
         else:
             # it is an utterance that was held out because of NaN distances, so just add it to the junk cluster
-            speechClusterID = mainJunkClusterID
+            speechClustID = mainJunkClusterID
             newJunkUtts.append(speech)
         
         location = int(row["shopkeeper2_currentLocation"])
@@ -138,7 +164,7 @@ for row in interactionData:
             spatialInfo = 0
             print("WARNING: Invalid spatial infor for row: {}".format(row))
 
-        action = (speechClusterID, spatialInfo)
+        action = (speechClustID, spatialInfo)
         actionKey = "-".join([str(x) for x in action])
 
         if actionKey not in actionKeyToActionID:
@@ -151,8 +177,8 @@ for row in interactionData:
         row["SHOPKEEPER_2_ACTION_CLUSTER"] = actionID
         row["SHOPKEEPER_2_SPATIAL_INFO"] = spatialInfo
         row["SHOPKEEPER_2_SPATIAL_INFO_NAME"] = shkpStopLocClustIDToName[spatialInfo]
-        row["SHOPKEEPER_2_SPEECH_CLUSTER"] = speechClusterID
-        row["SHOPKEEPER_2_REPRESENTATIVE_UTTERANCE"] = speechClustIDToRepUtt[speechClusterID]
+        row["SHOPKEEPER_2_SPEECH_CLUSTER"] = speechClustID
+        row["SHOPKEEPER_2_REPRESENTATIVE_UTTERANCE"] = speechClustIDToRepUtt[speechClustID]
         row["SHOPKEEPER_2_SPEECH_CLUSTER_IS_JUNK"] = speechClustIDIsJunk[speechClustID]
     
     else:
@@ -180,7 +206,8 @@ toIgnore = []
 isHidToImitate = []
 
 
-numActionsPerParcipant = {1:0, 2:0, 3:0}
+numActionsPerParticipant = {1:0, 2:0, 3:0}
+numFirstActionsPerParticipant = {1:0, 2:0, 3:0}
 actionHidSequenceCounts = {"total":0}
 countOverThreshold = {"total":0}
 timeDeltas = {"total":[]}
@@ -242,7 +269,10 @@ for i in range(len(interactionData)-1):
     hid = int(currAction["unique_id"])
     nextHid = int(nextAction["unique_id"])
 
-    numActionsPerParcipant[nextHid] += 1
+    if i == thisExpStartIndex:
+        numFirstActionsPerParticipant[hid] += 1
+
+    numActionsPerParticipant[nextHid] += 1
 
     hidSeq = "{}->{}".format(hid, nextHid)
     if hidSeq not in actionHidSequenceCounts:
@@ -271,8 +301,12 @@ for i in range(len(interactionData)-1):
 #
 # print the statistics
 #
-for key, value in numActionsPerParcipant.items():
+for key, value in numActionsPerParticipant.items():
     print("Unique ID {}: {} actions".format(key, value))
+
+for key, value in numFirstActionsPerParticipant.items():
+    print("Unique ID {}: {} first actions".format(key, value))
+
 
 for i in range(1,4):
     for j in range(1,4):

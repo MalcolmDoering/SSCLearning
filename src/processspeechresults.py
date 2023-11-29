@@ -19,7 +19,7 @@ import tools
 
 
 speechTablePrefix = "speech_"
-speechTableSuffix = "_cas_800_16_50_offline_starttime"
+speechTableSuffix = "_cas_800_16_50_offline_starttime_ge"
 newSpeechTableSuffix = "_p_0606_5s"
 
 participants = ["shopkeeper_1", "shopkeeper_2", "customer_1"]
@@ -35,7 +35,7 @@ def combine_neighboring_utterances(utt1, utt2):
     utt1_filename = utt1[5]
     utt1_hid = utt1[6]
     utt1_rich_result = utt1[7]
-    utt1_english = utt1[8]
+    utt1_english = str(utt1[8])
     utt1_cluster_key = utt1[9]
     utt1_correct = utt1[10]
     utt1_experiment = utt1[11]
@@ -53,7 +53,7 @@ def combine_neighboring_utterances(utt1, utt2):
     utt2_filename = utt2[5]
     utt2_hid = utt2[6]
     utt2_rich_result = utt2[7]
-    utt2_english = utt2[8]
+    utt2_english = str(utt2[8])
     utt2_cluster_key = utt2[9]
     utt2_correct = utt2[10]
     utt2_experiment = utt2[11]
@@ -65,13 +65,26 @@ def combine_neighboring_utterances(utt1, utt2):
 
     new_time = utt1_time # start time of first utterance
     new_idx = utt1_idx
-    new_sentence = utt1_sentence + utt2_sentence
+
+    if utt1_sentence[-1] != "。" and utt1_sentence[-1] != "？" and utt1_sentence[-1] != "、":
+        new_sentence = utt1_sentence + "。" + utt2_sentence
+    else:
+        new_sentence = utt1_sentence + utt2_sentence
+
     new_duration = round((utt2_result_end_time-utt1_result_start_time) * 1000)
     new_confidence_level = (utt1_confidence_level+utt2_confidence_level) / 2.0 
     new_filename = utt1_filename + ";" + utt2_filename
     new_hid = utt1_hid # should be the same for both
-    new_rich_result = ""
-    new_english = ""
+    new_rich_result = utt1_rich_result # will contain note about whether this contains good english translation
+
+    if utt1_english != "" and utt2_english != "":
+        new_english = utt1_english + ". " + utt2_english
+    elif (utt1_english != "" and utt2_english == "") or (utt1_english == "" and utt2_english != ""):
+        print("WARNING!")
+        new_english = ""
+    elif utt1_english == "" and utt2_english == "":
+        new_english = ""
+    
     new_cluster_key = ""
     new_correct = ""
     new_experiment = utt1_experiment
@@ -102,7 +115,7 @@ def upload_speech_to_db(cursor, speechTableNamePerParticipant, speechData):
             pass
 
 
-        sql = "REPLACE INTO {} (time, idx, sentence, duration, confidence_level, filename, hid, experiment, result_start_time, result_end_time, word_transcripts, word_start_times, word_end_times) VALUES ({}, {}, \"{}\", {}, {}, \"{}\", {}, {}, {}, {}, \"{}\", \"{}\",\"{}\")".format(
+        sql = "REPLACE INTO {} (time, idx, sentence, duration, confidence_level, filename, hid, rich_result, english, correct, experiment, result_start_time, result_end_time, word_transcripts, word_start_times, word_end_times) VALUES ({}, {}, \"{}\", {}, {}, \"{}\", {}, \"{}\", \"{}\", \"{}\", {}, {}, {}, \"{}\", \"{}\",\"{}\")".format(
             dbTableName, 
             sd[0], 
             sd[1], 
@@ -111,6 +124,11 @@ def upload_speech_to_db(cursor, speechTableNamePerParticipant, speechData):
             sd[4],
             sd[5],
             sd[6],
+
+            sd[7],
+            sd[8],
+            sd[10],
+
             sd[11],
             sd[12],
             sd[13],

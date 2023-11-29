@@ -8,28 +8,30 @@ import pymysql
 import copy
 
 
-def combine_speech_and_motion_actions_shopkeeper2(actionA, actionB):
+def combine_speech_and_motion_actions(actionA, actionB, participantRole, isHidToImitate):
 
     speechAction = actionA if actionA["participant_speech"] else actionB
-    motionAction = actionA if actionA["motion_start_time"] else actionB
+    motionAction = actionA if int(actionA[participantRole + "_motionTarget"]) else actionB
 
     # use timestamp of the first action
     actionC = copy.deepcopy(actionA)
 
-    # take the speech infor from the speech action
+    # take the speech info from the speech action
     actionC["participant_speech"] = speechAction["participant_speech"]
     actionC["speech_time"] = speechAction["speech_time"]
     actionC["speech_duration"] = speechAction["speech_duration"]
 
     # take the motion info from the motion action
-    actionC["motion_start_time"] = motionAction["motion_start_time"]
-    actionC["motion_end_time"] = motionAction["motion_end_time"]
-    actionC["true_motionTarget"] = motionAction["true_motionTarget"]
-    actionC["shopkeeper2_currentLocation"] = motionAction["shopkeeper2_currentLocation"]
-    actionC["shopkeeper2_motionOrigin"] = motionAction["shopkeeper2_motionOrigin"]
-    actionC["shopkeeper2_motionTarget"] = motionAction["shopkeeper2_motionTarget"]
+    actionC[participantRole + "_currentLocation"] = motionAction[participantRole + "_currentLocation"]
+    actionC[participantRole + "_motionOrigin"] = motionAction[participantRole + "_motionOrigin"]
+    actionC[participantRole + "_motionTarget"] = motionAction[participantRole + "_motionTarget"]
 
-    if int(actionC["shopkeeper2_currentLocation"]) == 0 and int(actionC["shopkeeper2_motionTarget"]) == 0:
+    if isHidToImitate:
+        actionC["motion_start_time"] = motionAction["motion_start_time"]
+        actionC["motion_end_time"] = motionAction["motion_end_time"]
+        actionC["true_motionTarget"] = motionAction["true_motionTarget"]
+
+    if int(actionC[participantRole + "_currentLocation"]) == 0 and int(actionC[participantRole + "_motionTarget"]) == 0:
         print("WARNING: Invalid motion information!")
 
     return actionC
@@ -76,6 +78,9 @@ for i in range(len(interactionData)):
     expID = int(data["experiment"])
     uniqueID = int(data["unique_id"])
 
+    if t == 1668645011.974:
+        print("hello")
+    
     if expID != currExpID:
         prevExpID = currExpID
         currExpID = expID
@@ -98,7 +103,9 @@ for i in range(len(interactionData)):
         elif hidToImitate == 3:
             motOri = data["shopkeeper2_motionOrigin"]
     
+
     elif trueMotTar != None and t > motStartTime and t < motEndTime:
+        # this is an action that occurs during a motion by the participant we want to imitate
         if hidToImitate == 1:
             data["shopkeeper1_currentLocation"] = "0"
             data["shopkeeper1_motionOrigin"] = motOri
@@ -113,17 +120,17 @@ for i in range(len(interactionData)):
             data["shopkeeper2_motionTarget"] = trueMotTar
         else:
             print("WARNING: Invalid unique_id:", hidToImitate)
-
-    elif trueMotTar != None and t >= motEndTime:
-        trueMotTar = None
-        motOri = None
-        motStartTime = None
-        motEndTime = None
     
 
+    elif trueMotTar != None and t > motStartTime and t == motEndTime:
+        # this action occurs exactly at the end of the previous motion action
+        # the correct current location should already be set
+        pass 
+
+    
     # there is no ongoing motion by the participant we want to imitate, so make sure the current location is set
     # this will overwrite situations where a motion was detected but the target ended up being the same as origin
-    if hidToImitate == 1 and int(data["shopkeeper1_currentLocation"]) == 0 and int(data["shopkeeper1_motionOrigin"]) != 0:
+    elif hidToImitate == 1 and int(data["shopkeeper1_currentLocation"]) == 0 and int(data["shopkeeper1_motionOrigin"]) != 0:
         data["shopkeeper1_currentLocation"] = data["shopkeeper1_motionOrigin"]
         data["shopkeeper1_motionOrigin"] = "0"
         data["shopkeeper1_motionTarget"] = "0"
@@ -135,7 +142,7 @@ for i in range(len(interactionData)):
         data["shopkeeper2_currentLocation"] = data["shopkeeper2_motionOrigin"]
         data["shopkeeper2_motionOrigin"] = "0"
         data["shopkeeper2_motionTarget"] = "0"
-
+    
 
     # sometimes overwriting detected motions could result in actions with no speech an no motion, so we can delete these.
     # we can also delete shopkeeper first appearance actions that don't contain speech or motion, because we don't need to imitate these.
@@ -147,6 +154,15 @@ for i in range(len(interactionData)):
             indicesToDelete.append(i)
         elif uniqueID == 3 and int(data["shopkeeper2_motionOrigin"]) == 0:
             indicesToDelete.append(i)
+    
+
+    # reset the motion information variables if the motion end time has passed
+    if trueMotTar != None and t >= motEndTime:
+        trueMotTar = None
+        motOri = None
+        motStartTime = None
+        motEndTime = None
+    
 
 indicesToDelete.reverse()
 for i in indicesToDelete:
@@ -214,24 +230,45 @@ i = 0
 while i < len(interactionData) - 1:
 
     data = interactionData[i]
+    data2 = interactionData[i+1]
+
     t = float(data["time"])
-    isSpeech = bool(data["participant_speech"])
-    isMotion = bool(data["motion_start_time"])
-    
-    data2 = interactionData[i+1]    
     t2 = float(data2["time"])
-    isSpeech2 = bool(data2["participant_speech"])
-    isMotion2 = bool(data2["motion_start_time"])
     
-    # only combine speech and motion actions, within threshold, from the human we want to imitate
-    if int(data["unique_id"]) == hidToImitate and int(data2["unique_id"]) == hidToImitate:
-        if t2-t < threshold:
-            if (isMotion and isSpeech2): 
-                actionIndicesToCombine.append((i, i+1))
-                actionsToCombine.append((data, data2))
-                combinedActions.append(combine_speech_and_motion_actions_shopkeeper2(data, data2))
-                i += 2
-                continue
+    hid = int(data["unique_id"])
+    hid2 = int(data2["unique_id"])
+    
+    # we're only interested in cases of subsequent actions from the same participant
+    if hid == hid2:
+        if hid == 1:
+            participantRole = "shopkeeper1"
+        elif hid == 2:
+            participantRole = "customer2" 
+        elif hid == 3:
+            participantRole = "shopkeeper2"
+        
+
+        isSpeech = bool(data["participant_speech"]) 
+        isSpeech2 = bool(data2["participant_speech"])
+
+        isMotion = bool(int(data[participantRole + "_motionTarget"]))
+        isMotion2 = bool(int(data2[participantRole + "_motionTarget"]))
+        
+
+        # only combine speech and motion actions, within threshold, from the human we want to imitate
+        #if int(data["unique_id"]) == hidToImitate and int(data2["unique_id"]) == hidToImitate:
+
+        # combine subsequent speech and motion actions from the same person if within threshold
+        if int(data["unique_id"]) == int(data2["unique_id"]):
+            if t2-t < threshold:
+                if (isMotion and isSpeech2) or (isSpeech and isMotion2): 
+                    actionIndicesToCombine.append((i, i+1))
+                    actionsToCombine.append((data, data2))
+
+                    combinedActions.append(combine_speech_and_motion_actions(data, data2, participantRole, isHidToImitate=int(data["unique_id"]) == hidToImitate))
+                    
+                    i += 2
+                    continue
 
     i += 1
 

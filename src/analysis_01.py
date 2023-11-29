@@ -25,8 +25,19 @@ import tools
 #expLogName = "20230731-173119_actionPrediction_02/baseline1" # binary prediction of whether S2 acts or not
 #expLogName = "20230731-173119_actionPrediction_02/baseline2" # prediction of S2 actions
 
-#expLogName = "20230801-134051_actionPrediction_02_/baseline1" # binary prediction of whether S2 acts or not
-expLogName = "20230801-134051_actionPrediction_02_/baseline2" # prediction of S2 actions
+# with action class outputs
+#expLogName = "20230807-191725_actionPrediction_02_/baseline1" # binary prediction of whether S2 acts or not
+#expLogName = "20230807-191725_actionPrediction_02_/baseline2" # prediction of S2 actions
+
+# with speech and motion class outputs
+#expLogName = "20230808-163410_actionPrediction_02_/baseline3" # prediction of S2 actions
+expLogName = "20231120-171349_actionPrediction_02/baseline1" # prediction of S2 actions
+expLogName = "20231120-171349_actionPrediction_02_/baseline3"
+expLogName = "20231122-174002_actionPrediction_02/baseline3" # 800 hidden, 1e-4 learning rate
+expLogName = "20231124-104954_actionPrediction_02/baseline3" # 800 hidden, 1e-3 learning rate
+expLogName = "20231124-134508_actionPrediction_02/baseline3" # 800 hidden, 1e-3 learning rate, attention
+expLogName = "20231124-144932_actionPrediction_02/baseline3" # 800 hidden, 1e-3 learning rate, attention, 2000 epochs
+expLogName = "20231127-133651_actionPrediction_02/baseline3" # 800 hidden, 1e-4 learning rate, attention, 2000 epochs
 
 
 
@@ -456,7 +467,7 @@ def save_1_metric_graph(runIdToData, metricName):
         
         for rId, df in runIdToData.items():
             
-            df.plot(x="Epoch", y="{} {} ({})".format(ds, metricName, rId), kind="line", ax=axes[i], legend=None)
+            df.plot(x="Epoch", y="{} {} ({})".format(ds, metricName, rId), kind="line", ax=axes[i], legend=None) #, xlim=(0,1500), ylim=(0,0.1))
             labels.append(rId)
         
             axes[i].set_title(ds)
@@ -545,8 +556,10 @@ if "baseline1" in expLogName:
 
 
 # for baseline 2
-elif "baseline2" in expLogDir:
+elif "baseline2" in expLogDir or "baseline3" in expLogDir:
     save_1_metric_graph(runIdToData, "Loss Ave")
+    save_1_metric_graph(runIdToData, "Speech Loss Ave")
+    save_1_metric_graph(runIdToData, "Motion Loss Ave")
     save_1_metric_graph(runIdToData, "Action Accuracy")
     save_1_metric_graph(runIdToData, "Speech Accuracy")
     save_1_metric_graph(runIdToData, "Spatial Accuracy")
