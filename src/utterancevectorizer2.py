@@ -55,6 +55,10 @@ class Token(object):
 #                      [chr(u) for u in range(12353,12439)]+ # hiragama characters
 #                      [chr(u) for u in range(12449,12539)] # katakana characters
 
+    def __hash__(self):
+        return hash(str(self.dictionaryForm))
+
+
     def __eq__(token1, token2):
         if token1.dictionaryForm == token2.dictionaryForm:
             return True

@@ -154,7 +154,7 @@ def color_non_matching(inputSent, decodedSent):
     return decodedSent
 
 
-def load_csv_data(fn, isHeader=False, isJapanese=False):
+def load_csv_data(filename, isHeader=False, isJapanese=False):
     data = []
     fieldnames = None
 
@@ -165,7 +165,7 @@ def load_csv_data(fn, isHeader=False, isJapanese=False):
 
 
     if isHeader:
-        with open(fn, newline='', encoding=encoding) as csvfile:
+        with open(filename, newline='', encoding=encoding) as csvfile:
             reader = csv.DictReader(csvfile)
             fieldnames = reader.fieldnames
         
@@ -173,7 +173,7 @@ def load_csv_data(fn, isHeader=False, isJapanese=False):
                 data.append(row)
 
     else:
-        with open(fn, newline='', encoding=encoding) as csvfile:
+        with open(filename, newline='', encoding=encoding) as csvfile:
             reader = csv.reader(csvfile)
 
             for row in reader:
@@ -183,31 +183,23 @@ def load_csv_data(fn, isHeader=False, isJapanese=False):
 
 
 
-def load_interaction_data(fn):
-    interactionData = []
-
-    with open(fn, newline='', encoding='utf-8-sig') as csvfile:
-        reader = csv.DictReader(csvfile)
-        fieldnames = reader.fieldnames
-        for row in reader:
-            interactionData.append(row)
-    
-    return interactionData, fieldnames
+def load_interaction_data(filename):
+    return load_csv_data(filename, isHeader=True, isJapanese=True)
 
 
 
-def save_interaction_data(interactionData, fn, fieldnames):
-    with open(fn, "w", newline='', encoding='utf-8-sig') as csvfile:
+def save_interaction_data(interactionData, filename, fieldnames):
+    with open(filename, "w", newline='', encoding='utf-8-sig') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(interactionData)
 
 
-def load_keywords(fn):
+def load_keywords(filename):
     keywordData = []
     keywords = []
 
-    with open(fn, newline='', encoding='utf-8-sig') as csvfile:
+    with open(filename, newline='', encoding='utf-8-sig') as csvfile:
         reader = csv.DictReader(csvfile)
         fieldnames = reader.fieldnames
         for row in reader:

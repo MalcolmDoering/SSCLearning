@@ -15,8 +15,21 @@ import tools
 
 
 
-bl1_expLogName = "20230731-173119_actionPrediction_02_/baseline1" # binary prediction of whether S2 acts or not
-bl2_expLogName = "20230731-173119_actionPrediction_02_/baseline2" # prediction of S2 actions
+#bl2_expLogName = "20230807-191725_actionPrediction_02_/baseline2" # prediction of S2 actions
+#bl1_expLogName = "20230807-191725_actionPrediction_02_/baseline1" # binary prediction of whether S2 acts or not
+bl1_expLogName = "20231120-171349_actionPrediction_02_/baseline1" # binary prediction of whether S2 acts or not
+
+# with speech and motion class outputs
+#bl2_expLogName = "20230808-163410_actionPrediction_02_/baseline3" # prediction of S2 actions
+bl2_expLogName = "20231121-134928_actionPrediction_02_/baseline3" # prediction of S2 actions
+bl2_expLogName = "20231120-171349_actionPrediction_02_/baseline3" # prediction of S2 actions
+bl2_expLogName = "20231122-174002_actionPrediction_02/baseline3" # 800 hidden, 1e-4 learning rate
+bl2_expLogName = "20231124-104954_actionPrediction_02/baseline3" # 800 hidden, 1e-3 learning rate
+bl2_expLogName = "20231124-144932_actionPrediction_02/baseline3" # 800 hidden, 1e-3 learning rate, attention, 2000 epochs
+
+
+
+
 
 bl1_expLogDir = tools.logDir+"/"+bl1_expLogName
 bl2_expLogDir = tools.logDir+"/"+bl2_expLogName
@@ -95,7 +108,7 @@ def load_prediction_data_for_epoch(runIdToBestEpoch, expLogDir):
         e = runIdToBestEpoch[runId][0]
 
         # load the data
-        runIdToPredictionData[runId], fieldnames = tools.load_csv_data("{}/{}/{}_all_outputs.csv".format(expLogDir, runId, e), isHeader=True, isJapanese=True)
+        runIdToPredictionData[runId], fieldnames = tools.load_csv_data("{}/{}/{:04}_all_outputs.csv".format(expLogDir, runId, e), isHeader=True, isJapanese=True)
         
     return runIdToPredictionData, fieldnames
 
@@ -139,14 +152,14 @@ for runId in bl1_runIdToPredictionData:
             combined["COMBINED_PRED_SHOPKEEPER_REPRESENTATIVE_UTTERANCE"] = combined["PRED_SHOPKEEPER_REPRESENTATIVE_UTTERANCE"]
             combined["COMBINED_PRED_SHOPKEEPER_SPEECH_CLUSTER"] = combined["PRED_SHOPKEEPER_SPEECH_CLUSTER"]
             combined["COMBINED_PRED_SHOPKEEPER_SPATIAL_INFO_NAME"] = combined["PRED_SHOPKEEPER_SPATIAL_INFO_NAME"]
-            combined["COMBINED_PRED_SHOPKEEPER_ACTION_CLUSTER"] = combined["PRED_SHOPKEEPER_ACTION_CLUSTER"]
+            #combined["COMBINED_PRED_SHOPKEEPER_ACTION_CLUSTER"] = combined["PRED_SHOPKEEPER_ACTION_CLUSTER"]
             combined["COMBINED_PRED_SHOPKEEPER_SPATIAL_INFO"] = combined["PRED_SHOPKEEPER_SPATIAL_INFO"]
         else:
             combined["COMBINED_PRED_SHOPKEEPER_ACTION"] = ""
             combined["COMBINED_PRED_SHOPKEEPER_REPRESENTATIVE_UTTERANCE"] = ""
             combined["COMBINED_PRED_SHOPKEEPER_SPEECH_CLUSTER"] = ""
             combined["COMBINED_PRED_SHOPKEEPER_SPATIAL_INFO_NAME"] = ""
-            combined["COMBINED_PRED_SHOPKEEPER_ACTION_CLUSTER"] = ""
+            #combined["COMBINED_PRED_SHOPKEEPER_ACTION_CLUSTER"] = ""
             combined["COMBINED_PRED_SHOPKEEPER_SPATIAL_INFO"] = ""
         
         runIdToCombinedPredictionData[runId].append(combined)
@@ -164,12 +177,11 @@ combinedFieldnames.append("COMBINED_PRED_SHOPKEEPER_ACTION")
 combinedFieldnames.append("COMBINED_PRED_SHOPKEEPER_REPRESENTATIVE_UTTERANCE")
 combinedFieldnames.append("COMBINED_PRED_SHOPKEEPER_SPEECH_CLUSTER")
 combinedFieldnames.append("COMBINED_PRED_SHOPKEEPER_SPATIAL_INFO_NAME")
-combinedFieldnames.append("COMBINED_PRED_SHOPKEEPER_ACTION_CLUSTER")
+#combinedFieldnames.append("COMBINED_PRED_SHOPKEEPER_ACTION_CLUSTER")
 combinedFieldnames.append("COMBINED_PRED_SHOPKEEPER_SPATIAL_INFO")
 
 ['PRED_SHOPKEEPER_REPRESENTATIVE_UTTERANCE', 'PRED_SHOPKEEPER_ACTION_CLUSTER', 'PRED_SHOPKEEPER_SPATIAL_INFO', 'PRED_SHOPKEEPER_SPATIAL_INFO_NAME', 'PRED_SHOPKEEPER_SPEECH_CLUSTER']
 tools.save_interaction_data(allPredictionsCombined, sessionDir+"all_predictions_combined.csv", combinedFieldnames)
-
 
 
 print("Done.")
