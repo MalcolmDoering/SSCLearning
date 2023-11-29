@@ -12,14 +12,14 @@ from scipy.stats import entropy
 sys.path.append('..')
 
 # for Malcolm desktop (robovie)
-projectDir = "C:/Users/robovie/eclipse-workspace/SSCLearning/"
-logDir = "E:/eclipse-log"
-dataDir = projectDir + "data/"
+#projectDir = "C:/Users/robovie/eclipse-workspace/SSCLearning/"
+#logDir = "E:/eclipse-log"
+#dataDir = projectDir + "data/"
 
 # for malcolm @ gpgpu1
-#projectDir = "/home/malcolm//eclipse-workspace/DatabaseLearning/"
-#logDir = "/data1/malcolm/eclipse-log"
-#dataDir = projectDir + "data/"
+projectDir = "/home/malcolm/eclipse-workspace/SSCLearning/"
+logDir = "/data1/malcolm/eclipse-log"
+dataDir = projectDir + "data/"
 
 modelDir = projectDir + "models/"
 

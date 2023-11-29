@@ -28,10 +28,10 @@ def split_list(a, n):
 # file paths
 #################################################################################################################
 
-evaluationDataDir = tools.dataDir + "20230731-125515_actionPredictionPreprocessing/"
+evaluationDataDir = tools.dataDir + "20231120-152207_actionPredictionPreprocessing/"
 
-interactionDataFilename = "20230710-151337_speechPreprocessing/20230623_SSC_3_trueMotionTargets_3_speechMotionCombined.csv"
-speechClustersFilename = "20230731-113400_speechClustering/all_shopkeeper_cos_3gram- speech_clusters.csv"
+interactionDataFilename = "20230807-141847_processForSpeechClustering/20230623_SSC_3_trueMotionTargets_3_speechMotionCombined.csv"
+speechClustersFilename = "20230731-113400_speechClustering/all_shopkeeper- speech_clusters - levenshtein normalized medoid.csv"
 keywordsFilename = tools.modelDir + "20230609-141854_unique_utterance_keywords.csv"
 uttVectorizerDir = evaluationDataDir
 stoppingLocationClusterDir = tools.modelDir + "20230627_stoppingLocationClusters/"
@@ -46,8 +46,8 @@ def main(mainDir, condition, gpuCount):
     # running params
     #################################################################################################################
 
-    DEBUG = True
-    RUN_PARALLEL = False
+    DEBUG = False
+    RUN_PARALLEL = True
     SPEECH_CLUSTER_LOSS_WEIGHTS = False
     NUM_GPUS = 8
     NUM_FOLDS = 8
@@ -59,7 +59,7 @@ def main(mainDir, condition, gpuCount):
     # params that should be the same for all conditions (predictors)
     batchSize = 8
     randomizeTrainingBatches = False
-    numEpochs = 100
+    numEpochs = 2000
     evalEvery = 1
     minClassCount = 2
 
@@ -71,12 +71,15 @@ def main(mainDir, condition, gpuCount):
     # what to run. only one of these should be true at a time
     bl1_run = False # prediction of whether or not S2 acts
     bl2_run = False # prediction of S2's actions
+    bl3_run = False
     prop_run = False
     
     if condition == "baseline1":
         bl1_run = True
     elif condition == "baseline2":
         bl2_run = True
+    elif condition == "baseline3":
+        bl3_run = True
     elif condition == "proposed":
         prop_run = True
     
@@ -107,7 +110,31 @@ def main(mainDir, condition, gpuCount):
         bl2_isHidToImitate = np.load(evaluationDataDir+"isHidToImitate.npy")
         bl2_inputVectorsCombined = np.load(evaluationDataDir+"inputVectorsCombined.npy")
     
+    elif bl3_run:
+        bl3_outputActionIDs = np.load(evaluationDataDir+"outputActionIDs.npy")
+        bl3_outputSpeechClusterIDs = np.load(evaluationDataDir+"outputSpeechClusterIDs.npy")
+        bl3_outputSpatialInfo = np.load(evaluationDataDir+"outputSpatialInfo.npy")
+        bl3_toIgnore = np.load(evaluationDataDir+"toIgnore.npy")
+        bl3_isHidToImitate = np.load(evaluationDataDir+"isHidToImitate.npy")
+        bl3_inputVectorsCombined = np.load(evaluationDataDir+"inputVectorsCombined.npy")
+        
+        # read the speech clusters
+        bl3_speechClusterData, _ = tools.load_csv_data(tools.dataDir+speechClustersFilename, isHeader=True, isJapanese=True)
+        bl3_speechClustIDToRepUtt = {}
+        bl3_speechClustIDToIsJunk = {}
 
+        for row in bl3_speechClusterData:
+            speech = row["Utterance"]
+            speechClustID = int(row["Cluster.ID"])
+
+            if int(row["Is.Representative"]) == 1:
+                bl3_speechClustIDToRepUtt[speechClustID] = speech
+            
+            if int(row["Is.Junk"]) == 1:
+                bl3_speechClustIDToIsJunk[speechClustID] = 1
+            else:
+                bl3_speechClustIDToIsJunk[speechClustID] = 0
+    
     
     #################################################################################################################
     # setup terminal output / file
@@ -265,12 +292,13 @@ def main(mainDir, condition, gpuCount):
             
             
         elif bl2_run:
-            interactionsFieldnames = ["SET", "ID"] + humanReadableInputsOutputsFieldnames + ["PRED_SHOPKEEPER_ACTION",
+            interactionsFieldnames = ["SET", "ID"] + humanReadableInputsOutputsFieldnames + ["LOSS_WEIGHT",
+                                                                                             'PRED_SHOPKEEPER_ACTION_CLUSTER',
+                                                                                             'PRED_SHOPKEEPER_SPEECH_CLUSTER',  
                                                                                              'PRED_SHOPKEEPER_REPRESENTATIVE_UTTERANCE', 
-                                                                                             'PRED_SHOPKEEPER_SPEECH_CLUSTER', 
-                                                                                             'PRED_SHOPKEEPER_SPATIAL_INFO_NAME', 
-                                                                                             'PRED_SHOPKEEPER_ACTION_CLUSTER', 
-                                                                                             'PRED_SHOPKEEPER_SPATIAL_INFO']
+                                                                                             'PRED_SHOPKEEPER_SPATIAL_INFO',
+                                                                                             'PRED_SHOPKEEPER_SPATIAL_INFO_NAME' 
+                                                                                             ]
             
             with open(foldLogFile, "a", newline="") as csvfile:
                 writer = csv.writer(csvfile)
@@ -300,6 +328,55 @@ def main(mainDir, condition, gpuCount):
                                  "Testing Loss SD ({})".format(foldIdentifier),
                                  "Testing Action Loss Ave ({})".format(foldIdentifier),
                                  "Testing Action Loss SD ({})".format(foldIdentifier),
+
+                                 "Testing Action Accuracy ({})".format(foldIdentifier),
+                                 "Testing Speech Accuracy ({})".format(foldIdentifier),
+                                 "Testing Spatial Accuracy ({})".format(foldIdentifier) ])
+        
+
+        elif bl3_run:
+            interactionsFieldnames = ["SET", "ID"] + humanReadableInputsOutputsFieldnames + ["LOSS_WEIGHT",
+                                                                                             'PRED_SHOPKEEPER_SPEECH_CLUSTER',
+                                                                                             'PRED_SHOPKEEPER_REPRESENTATIVE_UTTERANCE', 
+                                                                                             'PRED_SHOPKEEPER_SPATIAL_INFO',
+                                                                                             'PRED_SHOPKEEPER_SPATIAL_INFO_NAME' 
+                                                                                             ]
+            
+            with open(foldLogFile, "a", newline="") as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(["Epoch",
+                                 
+                                 "Training Loss Ave ({})".format(foldIdentifier), 
+                                 "Training Loss SD ({})".format(foldIdentifier),
+                                 "Training Speech Loss Ave ({})".format(foldIdentifier),
+                                 "Training Speech Loss SD ({})".format(foldIdentifier),
+                                 "Training Motion Loss Ave ({})".format(foldIdentifier),
+                                 "Training Motion Loss SD ({})".format(foldIdentifier),
+
+                                 "Training Action Accuracy ({})".format(foldIdentifier),
+                                 "Training Speech Accuracy ({})".format(foldIdentifier),
+                                 "Training Spatial Accuracy ({})".format(foldIdentifier),
+                                 
+
+                                 "Validation Loss Ave ({})".format(foldIdentifier), 
+                                 "Validation Loss SD ({})".format(foldIdentifier),
+                                 "Validation Speech Loss Ave ({})".format(foldIdentifier),
+                                 "Validation Speech Loss SD ({})".format(foldIdentifier),
+                                 "Validation Motion Loss Ave ({})".format(foldIdentifier),
+                                 "Validation Motion Loss SD ({})".format(foldIdentifier),
+
+                                 "Validation Action Accuracy ({})".format(foldIdentifier),
+                                 "Validation Speech Accuracy ({})".format(foldIdentifier),
+                                 "Validation Spatial Accuracy ({})".format(foldIdentifier),
+
+                                                                  
+                                 "Testing Loss Ave ({})".format(foldIdentifier), 
+                                 "Testing Loss SD ({})".format(foldIdentifier),
+                                 "Testing Speech Loss Ave ({})".format(foldIdentifier),
+                                 "Testing Speech Loss SD ({})".format(foldIdentifier),
+                                 "Testing Motion Loss Ave ({})".format(foldIdentifier),
+                                 "Testing Motion Loss SD ({})".format(foldIdentifier),
+
 
                                  "Testing Action Accuracy ({})".format(foldIdentifier),
                                  "Testing Speech Accuracy ({})".format(foldIdentifier),
@@ -396,7 +473,73 @@ def main(mainDir, condition, gpuCount):
             # only evaluate using certain roles
             bl2_isValidCondition = np.asarray(bl2_isValidCondition)
             bl2_outputMasks[bl2_isValidCondition == 0] = 0
+        
 
+        elif bl3_run:
+            # get action and speech cluster info from the interaction data file
+            bl3_speechClustCounts = {}
+            bl3_motionIDToSpatialName = {}
+            bl3_isValidCondition = [] # for now, only inlcude standard S2 roles
+            
+            for row in humanReadableInputsOutputs:
+                spatialInfo = int(row["y_SHOPKEEPER_2_SPATIAL_INFO"])
+                spatialInfoName = row["y_SHOPKEEPER_2_SPATIAL_INFO_NAME"]
+                speechClustID = int(row["y_SHOPKEEPER_2_SPEECH_CLUSTER"])
+
+                if speechClustID not in bl3_speechClustCounts:
+                    bl3_speechClustCounts[speechClustID] = 0
+                
+                if spatialInfo not in bl3_motionIDToSpatialName:
+                    bl3_motionIDToSpatialName[spatialInfo] = spatialInfoName
+                
+                if row["SHOPKEEPER2_TYPE"] == "NORMAL":
+                    bl3_isValidCondition.append(1)
+                    bl3_speechClustCounts[speechClustID] += 1
+                else:
+                    bl3_isValidCondition.append(0)
+
+            #bl3_numSpeechClusters = len(bl3_speechClustCounts)
+            bl3_maxSpeechClusterID = max(list(bl3_speechClustCounts.keys()))
+
+            # assign the null speech cluster ID to something that can be fed to the neural network
+            nullSpeechClusterID = bl3_maxSpeechClusterID + 1
+            bl3_maxSpeechClusterID = nullSpeechClusterID
+
+            bl3_speechClustCounts[nullSpeechClusterID] = bl3_speechClustCounts[-1]
+            bl3_speechClustCounts.pop(-1)
+
+            bl3_speechClustIDToRepUtt[nullSpeechClusterID] = ""
+            bl3_speechClustIDToIsJunk[nullSpeechClusterID] = 0
+            
+            # replace null actions marked with -1 with the null action ID
+            bl3_outputSpeechClusterIDs[np.where(bl3_outputSpeechClusterIDs == -1)] = nullSpeechClusterID
+            
+            # unused
+            bl3_outputSpeechClassWeights = np.ones((bl3_maxSpeechClusterID))
+
+            # set null action to 0 weight 
+            bl3_outputMasks = np.copy(bl3_toIgnore)
+            bl3_outputMasks[bl3_outputMasks == -1] = 1 # -1 marks non S2 actions
+            bl3_outputMasks = 1 -bl3_outputMasks
+
+            # set junk speech clusters to 0 weight 
+            bl3_speechClustIsJunk = np.asarray([1 if bl3_speechClustIDToIsJunk[x] == 1 else 0 for x in bl3_outputSpeechClusterIDs])
+            bl3_outputMasks[bl3_speechClustIsJunk == 1] = 0
+
+            # set actions with less than min count to 0 weight
+            bl3_speechClustOverMinCount = np.asarray([0 if bl3_speechClustCounts[x] < minClassCount else 1 for x in bl3_outputSpeechClusterIDs])
+            bl3_outputMasks[bl3_speechClustOverMinCount == 0] = 0
+            
+            # only evaluate using certain roles
+            bl3_isValidCondition = np.asarray(bl3_isValidCondition)
+            bl3_outputMasks[bl3_isValidCondition == 0] = 0
+
+            # for motion output
+            bl3_maxMotionID = max(bl3_outputSpatialInfo)
+            bl3_outputSpatialInfo[bl3_outputSpatialInfo == -1] = 0 # change to something we can input to the network
+            bl3_motionIDToSpatialName[0] = bl3_motionIDToSpatialName[-1]
+            bl3_outputMotionClassWeights = np.ones((bl3_maxMotionID))
+            
             
             #
             # for speech clusters
@@ -484,6 +627,22 @@ def main(mainDir, condition, gpuCount):
                                                         bl2_embeddingSize,
                                                         randomSeed,
                                                         bl2_outputClassWeights)
+            
+        elif bl3_run:
+            bl3_inputDim = bl3_inputVectorsCombined.shape[2]
+            bl3_inputSeqLen = bl3_inputVectorsCombined.shape[1]
+            bl3_embeddingSize = 800
+
+            learner = learning.SimpleFeedforwardNetworkSplitOutputs(bl3_inputDim,
+                                                                    bl3_inputSeqLen, 
+                                                                    bl3_maxSpeechClusterID,
+                                                                    bl3_maxMotionID,
+                                                                    batchSize, 
+                                                                    bl3_embeddingSize,
+                                                                    randomSeed,
+                                                                    bl3_outputSpeechClassWeights,
+                                                                    bl3_outputMotionClassWeights,
+                                                                    learningRate=1e-4)
         
         elif prop_run:
             pass
@@ -617,11 +776,8 @@ def main(mainDir, condition, gpuCount):
                     #
                     # save the evaluation results
                     #
-                    with open(foldDir+"/{:}_all_outputs.csv".format(e), "w", newline="") as csvfile:
-                        writer = csv.DictWriter(csvfile, interactionsFieldnames)
-                        writer.writeheader()
-                        writer.writerows(csvLogRows)
-                    
+                    tools.save_interaction_data(csvLogRows, foldDir+"/{:04}_all_outputs.csv".format(e), interactionsFieldnames)
+                                        
                     
                     # append to session log   
                     with open(foldLogFile, "a", newline="") as csvfile:
@@ -776,7 +932,6 @@ def main(mainDir, condition, gpuCount):
                     def evaluate_predictions_bl2(evalSetName, evalIndices, csvLogRows):
                         # TODO: don't include null actions, etc. in the performance metrics computations
 
-
                         # for computing accuracies
                         actions_gt = []
                         actions_pred = []
@@ -813,6 +968,7 @@ def main(mainDir, condition, gpuCount):
                             #
                             # prediction info
                             #
+                            csvLogRows[i]["LOSS_WEIGHT"] = bl2_outputMasks[i]
                             csvLogRows[i]["PRED_SHOPKEEPER_ACTION_CLUSTER"] = predActionClustID
                             csvLogRows[i]["PRED_SHOPKEEPER_SPEECH_CLUSTER"] = predSpeechClustID
                             csvLogRows[i]["PRED_SHOPKEEPER_SPATIAL_INFO"] = predSpatialInfo
@@ -862,7 +1018,7 @@ def main(mainDir, condition, gpuCount):
                     #
                     # save the evaluation results
                     #
-                    tools.save_interaction_data(csvLogRows, foldDir+"/{:}_all_outputs.csv".format(e), interactionsFieldnames)
+                    tools.save_interaction_data(csvLogRows, foldDir+"/{:04}_all_outputs.csv".format(e), interactionsFieldnames)
 
 
                     # append to session log   
@@ -927,6 +1083,247 @@ def main(mainDir, condition, gpuCount):
             # END BASELINE 2 RUN!
             #################################################################################################################
 
+
+            elif bl3_run:
+            
+                #################################################################################################################
+                # BEGIN BASELINE 3 RUN!
+                #################################################################################################################
+                
+                if e != 0:
+                    # train
+
+                    learner.train(bl3_inputVectorsCombined[trainIndices], 
+                                  bl3_outputSpeechClusterIDs[trainIndices],
+                                  bl3_outputSpatialInfo[trainIndices],
+                                  bl3_outputMasks[trainIndices])
+                
+                
+                # evaluate
+                if e % evalEvery == 0 or e == numEpochs:
+                    
+                    # training loss
+                    trainCost, trainSpeechLoss, trainMotionLoss = learner.get_loss(
+                        bl3_inputVectorsCombined[trainIndices],
+                        bl3_outputSpeechClusterIDs[trainIndices],
+                        bl3_outputSpatialInfo[trainIndices],                                 
+                        bl3_outputMasks[trainIndices])
+                    
+                    # validation loss
+                    valCost, valSpeechLoss, valMotionLoss = learner.get_loss(
+                        bl3_inputVectorsCombined[valIndices],
+                        bl3_outputSpeechClusterIDs[valIndices],
+                        bl3_outputSpatialInfo[valIndices],                                     
+                        bl3_outputMasks[valIndices])
+                    
+                    # test loss
+                    testCost, testSpeechLoss, testMotionLoss = learner.get_loss(
+                        bl3_inputVectorsCombined[testIndices],
+                        bl3_outputSpeechClusterIDs[testIndices],
+                        bl3_outputSpatialInfo[testIndices],                                      
+                        bl3_outputMasks[testIndices])
+                        
+                    
+                    # compute loss averages and s.d. for aggregate log
+                    # train
+                    trainCostAve = np.mean(trainCost)
+                    trainSpeechLossAve = np.mean(trainSpeechLoss)
+                    trainMotionLossAve = np.mean(trainMotionLoss)
+
+                    trainCostStd = np.std(trainCost)
+                    trainSpeechLossStd = np.std(trainSpeechLoss)
+                    trainMotionLossStd = np.std(trainMotionLoss)
+                    
+                    
+                    # validation
+                    valCostAve = np.mean(valCost)
+                    valSpeechLossAve = np.mean(valSpeechLoss)
+                    valMotionLossAve = np.mean(valMotionLoss)
+
+                    valCostStd = np.std(valCost)
+                    valSpeechLossStd = np.std(valSpeechLoss)
+                    valMotionLossStd = np.std(valMotionLoss)
+                    
+                    
+                    # test
+                    testCostAve = np.mean(testCost)
+                    testSpeechLossAve = np.mean(testSpeechLoss)
+                    testMotionLossAve = np.mean(testMotionLoss)
+
+                    testCostStd = np.std(testCost)
+                    testSpeechLossStd = np.std(testSpeechLoss)
+                    testMotionLossStd = np.std(testMotionLoss)
+                    
+                    
+                    # predict
+                    predShkpSpeech, predShkpMotion = learner.predict(
+                        bl3_inputVectorsCombined,
+                        bl3_outputSpeechClusterIDs,
+                        bl3_outputSpatialInfo,                                       
+                        bl3_outputMasks)
+                    
+                    
+                    def evaluate_predictions_bl3(evalSetName, evalIndices, csvLogRows):
+                        # for computing accuracies
+                        actions_gt = []
+                        actions_pred = []
+
+                        speechClusts_gt = []
+                        speechClusts_pred = []
+
+                        spatial_gt = []
+                        spatial_pred = []
+
+                        speechAndMotionCorrect = []
+
+                        for i in evalIndices:
+                            
+                            # check if the index is one of the ones that was cut off because of the batch size
+                            if i >= len(predShkpSpeech):
+                                continue
+                            
+                            csvLogRows[i]["SET"] = evalSetName
+                            csvLogRows[i]["ID"] = i
+
+                            #
+                            # get the speech cluster and spatial info predictions
+                            #
+                            predSpeechClustID = predShkpSpeech[i]
+                            predSpatialInfo = predShkpMotion[i]
+                            predSpatialInfoName = bl3_motionIDToSpatialName[predSpatialInfo]
+                            predRepUtt = bl3_speechClustIDToRepUtt[predSpeechClustID]
+
+                            gtSpeechClustID = bl3_outputSpeechClusterIDs[i]
+                            gtSpatialInfo = bl3_outputSpatialInfo[i]
+
+                            #
+                            # prediction info
+                            #
+                            csvLogRows[i]["LOSS_WEIGHT"] = bl3_outputMasks[i]
+                            csvLogRows[i]["PRED_SHOPKEEPER_SPEECH_CLUSTER"] = predSpeechClustID
+                            csvLogRows[i]["PRED_SHOPKEEPER_SPATIAL_INFO"] = predSpatialInfo
+                            csvLogRows[i]["PRED_SHOPKEEPER_SPATIAL_INFO_NAME"] = predSpatialInfoName
+                            csvLogRows[i]["PRED_SHOPKEEPER_REPRESENTATIVE_UTTERANCE"] = predRepUtt
+
+                            #
+                            # for computing accuracies
+                            #
+                            speechClusts_gt.append(gtSpeechClustID)
+                            speechClusts_pred.append(predSpeechClustID)
+
+                            spatial_gt.append(gtSpatialInfo)
+                            spatial_pred.append(predSpatialInfo)
+
+                            speechAndMotionCorrect.append(predSpeechClustID == gtSpeechClustID and predSpatialInfo == gtSpatialInfo)
+                        
+                        
+                        #
+                        # compute accuracies
+                        # fix the len of the output masks because sometimes test set gets cut off during prediction
+                        #
+                        speechAndMotionCorrect = np.asarray(speechAndMotionCorrect)
+                        speechAndMotionCorrectMasked = np.copy(speechAndMotionCorrect)
+                        speechAndMotionCorrectMasked[np.where(bl3_outputMasks[:len(spatial_gt)] == 0)] = 0
+                        numSpeechAndMotionCorrect = sum(speechAndMotionCorrectMasked)
+                        numToBeEvaluated = sum(bl3_outputMasks[evalIndices][:len(spatial_gt)])
+                        actionCorrAcc = float(numSpeechAndMotionCorrect) / float(numToBeEvaluated)
+                        
+                        speechCorrAcc = accuracy_score(speechClusts_gt, speechClusts_pred, sample_weight=bl3_outputMasks[evalIndices][:len(spatial_gt)])
+                        #speechPrec, speechRec, speechFsc, speechSupp = precision_recall_fscore_support(speechClusts_gt, speechClusts_pred, sample_weight=bl3_outputMasks[evalIndices])
+                        
+                        spatialCorrAcc = accuracy_score(spatial_gt, spatial_pred, sample_weight=bl3_outputMasks[evalIndices][:len(spatial_gt)]) 
+                        #spatialPrec, spatialRec, spatialFsc, spatialSupp = precision_recall_fscore_support(spatial_gt, spatial_pred, sample_weight=bl3_outputMasks[evalIndices])
+                        
+
+
+                        return csvLogRows, actionCorrAcc, speechCorrAcc, spatialCorrAcc
+                    
+                    
+                    csvLogRows = copy.deepcopy(humanReadableInputsOutputs)
+                    
+                    csvLogRows, trainActionCorrAcc, trainSpeechCorrAcc, trainSpatialCorrAcc = evaluate_predictions_bl3("TRAIN", trainIndices, csvLogRows)
+                    
+                    csvLogRows, valActionCorrAcc, valSpeechCorrAcc, valSpatialCorrAcc = evaluate_predictions_bl3("VAL", valIndices, csvLogRows)
+                    
+                    csvLogRows, testActionCorrAcc, testSpeechCorrAcc, testSpatialCorrAcc = evaluate_predictions_bl3("TEST", testIndices, csvLogRows)
+                    
+                    
+                    #
+                    # save the evaluation results
+                    #
+                    tools.save_interaction_data(csvLogRows, foldDir+"/{:04}_all_outputs.csv".format(e), interactionsFieldnames)
+
+
+                    # append to session log   
+                    with open(foldLogFile, "a", newline="") as csvfile:
+                        writer = csv.writer(csvfile)
+                        writer.writerow([e,
+                                         
+                                         # training
+                                         trainCostAve,
+                                         trainCostStd,
+                                         trainSpeechLossAve,
+                                         trainSpeechLossStd,
+                                         trainMotionLossAve,
+                                         trainMotionLossStd,
+                                         
+                                         trainActionCorrAcc,
+                                         trainSpeechCorrAcc,
+                                         trainSpatialCorrAcc,
+
+                                         
+                                         # validation
+                                         valCostAve,
+                                         valCostStd,
+                                         valSpeechLossAve,
+                                         valSpeechLossStd,
+                                         valMotionLossAve,
+                                         valMotionLossStd,
+                                                                                  
+                                         valActionCorrAcc,
+                                         valSpeechCorrAcc, 
+                                         valSpatialCorrAcc,
+                                        
+                                         
+                                         # testing
+                                         testCostAve,
+                                         testCostStd,
+                                         testSpeechLossAve,
+                                         testSpeechLossStd,
+                                         testMotionLossAve,
+                                         testMotionLossStd,
+                                         
+                                         testActionCorrAcc,
+                                         testSpeechCorrAcc, 
+                                         testSpatialCorrAcc
+                                         ])    
+                
+                
+                    # training
+                    print("===== {} EPOCH {} LOSSES AND ACCURACIES=====".format(condition.upper(), e), flush=True, file=foldTerminalOutputStream)
+                    tableData = []
+                    
+                    tableData.append(["CostAve", trainCostAve, valCostAve, testCostAve])
+                    tableData.append(["CostStd", trainCostStd, valCostStd, testCostStd])
+                    tableData.append(["SpeechLossAve", trainSpeechLossAve, valSpeechLossAve, testSpeechLossAve])
+                    tableData.append(["SpeechLossStd", trainSpeechLossStd, valSpeechLossStd, testSpeechLossStd])
+                    tableData.append(["MotionLossAve", trainMotionLossAve, valMotionLossAve, testMotionLossAve])
+                    tableData.append(["MotionLossStd", trainMotionLossStd, valMotionLossStd, testMotionLossStd])
+                    
+                    tableData.append(["ActionCorrAcc", trainActionCorrAcc, valActionCorrAcc, testActionCorrAcc])
+                    tableData.append(["SpeechCorrAcc", trainSpeechCorrAcc, valSpeechCorrAcc, testSpeechCorrAcc])
+                    tableData.append(["SpatialCorrAcc", trainSpatialCorrAcc, valSpatialCorrAcc, testSpatialCorrAcc])
+                    
+
+                    print(tabulate(tableData, headers=["METRIC", "TRAINING", "VALIDATION", "TESTING"], floatfmt=".3f", tablefmt="grid"), flush=True, file=foldTerminalOutputStream)
+                            
+                    print("", flush=True, file=foldTerminalOutputStream)
+
+            
+            #################################################################################################################
+            # END BASELINE 3 RUN!
+            #################################################################################################################
+
             
             elif prop_run:
                 pass
@@ -968,7 +1365,9 @@ def main(mainDir, condition, gpuCount):
 # start here...
 #
 gpuCount = 0
-gpuCount = main(mainDir, "baseline2", gpuCount)
+
+gpuCount = main(mainDir, "baseline3", gpuCount)
+#gpuCount = main(mainDir, "baseline1", gpuCount)
 
 
 print("Done.")
