@@ -12,14 +12,14 @@ from scipy.stats import entropy
 sys.path.append('..')
 
 # for Malcolm desktop (robovie)
-#projectDir = "C:/Users/robovie/eclipse-workspace/SSCLearning/"
-#logDir = "E:/eclipse-log"
-#dataDir = projectDir + "data/"
+projectDir = "C:/Users/robovie/eclipse-workspace/SSCLearning/"
+logDir = "E:/eclipse-log"
+dataDir = projectDir + "data/"
 
 # for malcolm @ gpgpu1
-projectDir = "/home/malcolm/eclipse-workspace/SSCLearning/"
-logDir = "/data1/malcolm/eclipse-log"
-dataDir = projectDir + "data/"
+#projectDir = "/home/malcolm/eclipse-workspace/SSCLearning/"
+#logDir = "/data1/malcolm/eclipse-log"
+#dataDir = projectDir + "data/"
 
 modelDir = projectDir + "models/"
 
@@ -182,17 +182,25 @@ def load_csv_data(filename, isHeader=False, isJapanese=False):
     return data, fieldnames
 
 
+def save_csv_data(dataDict, filename, fieldnames, isJapanese=False):
+    if isJapanese:
+        encoding = 'utf-8-sig'
+    else:
+        encoding = "utf-8"
+    
+    with open(filename, "w", newline='', encoding=encoding) as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(dataDict)
+
+
 
 def load_interaction_data(filename):
     return load_csv_data(filename, isHeader=True, isJapanese=True)
 
 
-
 def save_interaction_data(interactionData, filename, fieldnames):
-    with open(filename, "w", newline='', encoding='utf-8-sig') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(interactionData)
+    save_csv_data(interactionData, filename, fieldnames, isJapanese=True)
 
 
 def load_keywords(filename):

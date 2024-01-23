@@ -474,6 +474,10 @@ with connection:
                                        "SHOPKEEPER2_TYPE": s2Type, 
                                        "NOTES": otherNotes}
 
+# save
+expConditions = list(expIDToCondition.values())
+tools.save_csv_data(expConditions, sessionDir+"experimentConditions.csv", expConditions[0].keys())
+
 
 #
 # add the condition info to the data
