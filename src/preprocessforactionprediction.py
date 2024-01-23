@@ -10,7 +10,7 @@ import utterancevectorizer2
 
 
 trainUttVectorizer = False
-
+outputBothShokeeperActions = True
 
 interactionDataFilename = "20230807-141847_processForSpeechClustering/20230623_SSC_3_trueMotionTargets_3_speechMotionCombined.csv"
 speechClustersFilename = "20230731-113400_speechClustering/all_shopkeeper- speech_clusters - levenshtein normalized medoid.csv"
@@ -138,11 +138,16 @@ actionKeyToActionID = {}
 
 newJunkUtts = []
 
+if outputBothShokeeperActions:
+    uniqueIDsToGetActionsFor = [1, 3]
+else:
+    uniqueIDsToGetActionsFor = [3]
+
 for row in interactionData:
     uniqueID = int(row["unique_id"])
         
     # junior shopkeeper
-    if uniqueID == 3: 
+    if uniqueID in uniqueIDsToGetActionsFor: 
         speech = row["participant_speech"]
 
 
@@ -153,8 +158,8 @@ for row in interactionData:
             speechClustID = mainJunkClusterID
             newJunkUtts.append(speech)
         
-        location = int(row["shopkeeper2_currentLocation"])
-        motionTarget = int(row["shopkeeper2_motionTarget"])
+        location = int(row["{}_currentLocation".format(uniqueIDToIdentifier[uniqueID])])
+        motionTarget = int(row["{}_motionTarget".format(uniqueIDToIdentifier[uniqueID])])
         
         if location != 0:
             spatialInfo = location
@@ -174,20 +179,22 @@ for row in interactionData:
         
         actionID = actionKeyToActionID[actionKey]
         
-        row["SHOPKEEPER_2_ACTION_CLUSTER"] = actionID
-        row["SHOPKEEPER_2_SPATIAL_INFO"] = spatialInfo
-        row["SHOPKEEPER_2_SPATIAL_INFO_NAME"] = shkpStopLocClustIDToName[spatialInfo]
-        row["SHOPKEEPER_2_SPEECH_CLUSTER"] = speechClustID
-        row["SHOPKEEPER_2_REPRESENTATIVE_UTTERANCE"] = speechClustIDToRepUtt[speechClustID]
-        row["SHOPKEEPER_2_SPEECH_CLUSTER_IS_JUNK"] = speechClustIDIsJunk[speechClustID]
+        row["SHOPKEEPER_ACTION_CLUSTER"] = actionID
+        row["SHOPKEEPER_SPATIAL_INFO"] = spatialInfo
+        row["SHOPKEEPER_SPATIAL_INFO_NAME"] = shkpStopLocClustIDToName[spatialInfo]
+        row["SHOPKEEPER_SPEECH_CLUSTER"] = speechClustID
+        row["SHOPKEEPER_REPRESENTATIVE_UTTERANCE"] = speechClustIDToRepUtt[speechClustID]
+        row["SHOPKEEPER_SPEECH_CLUSTER_IS_JUNK"] = speechClustIDIsJunk[speechClustID]
+        row["SHOPKEEPER_UNIQUE_ID"] = uniqueID
     
     else:
-        row["SHOPKEEPER_2_ACTION_CLUSTER"] = -1
-        row["SHOPKEEPER_2_SPATIAL_INFO"] = -1
-        row["SHOPKEEPER_2_SPATIAL_INFO_NAME"] = "None"
-        row["SHOPKEEPER_2_SPEECH_CLUSTER"] = -1
-        row["SHOPKEEPER_2_REPRESENTATIVE_UTTERANCE"] = ""
-        row["SHOPKEEPER_2_SPEECH_CLUSTER_IS_JUNK"] = 0
+        row["SHOPKEEPER_ACTION_CLUSTER"] = -1
+        row["SHOPKEEPER_SPATIAL_INFO"] = -1
+        row["SHOPKEEPER_SPATIAL_INFO_NAME"] = "None"
+        row["SHOPKEEPER_SPEECH_CLUSTER"] = -1
+        row["SHOPKEEPER_REPRESENTATIVE_UTTERANCE"] = ""
+        row["SHOPKEEPER_SPEECH_CLUSTER_IS_JUNK"] = 0
+        row["SHOPKEEPER_UNIQUE_ID"] = -1
 
 
 #
@@ -195,7 +202,7 @@ for row in interactionData:
 # add NULL shopkeeper 2 actions in between actions of other participants (to teach shopkeeper not to respond to them) (is this good?...)
 #
 
-inputLen = 5
+inputLen = 1
 
 inputs = []
 outputs = []
@@ -212,7 +219,11 @@ actionHidSequenceCounts = {"total":0}
 countOverThreshold = {"total":0}
 timeDeltas = {"total":[]}
 
-hidToImitate = 3 # junior shopkeeper
+if outputBothShokeeperActions:
+    hidToImitate = [1, 3] # both shopkeepers
+else:
+    hidToImitate = [3] # junior shopkeeper
+
 
 threshold = 6.0
 
@@ -242,15 +253,14 @@ for i in range(len(interactionData)-1):
     inputs.append(inputTemp)
     outputs.append(nextAction)
 
-    isHidToImitateTemp = int(int(nextAction["unique_id"]) == hidToImitate)
+    isHidToImitateTemp = int(int(nextAction["unique_id"]) in hidToImitate)
     isHidToImitate.append(isHidToImitateTemp)
 
     if isHidToImitateTemp:
-        outputActionIDs.append(nextAction["SHOPKEEPER_2_ACTION_CLUSTER"])
-        outputSpeechClusterIDs.append(nextAction["SHOPKEEPER_2_SPEECH_CLUSTER"])
-        outputSpatialInfo.append(nextAction["SHOPKEEPER_2_SPATIAL_INFO"])
-        toIgnore.append(nextAction["SHOPKEEPER_2_SPEECH_CLUSTER_IS_JUNK"])
-
+        outputActionIDs.append(nextAction["SHOPKEEPER_ACTION_CLUSTER"])
+        outputSpeechClusterIDs.append(nextAction["SHOPKEEPER_SPEECH_CLUSTER"])
+        outputSpatialInfo.append(nextAction["SHOPKEEPER_SPATIAL_INFO"])
+        toIgnore.append(nextAction["SHOPKEEPER_SPEECH_CLUSTER_IS_JUNK"])
 
     else:
         outputActionIDs.append(-1)
@@ -279,7 +289,7 @@ for i in range(len(interactionData)-1):
         actionHidSequenceCounts[hidSeq] = 0
     actionHidSequenceCounts[hidSeq] += 1
 
-    hidSeq = "{}->{}".format(hid==hidToImitate, nextHid==hidToImitate)
+    hidSeq = "{}->{}".format(hid in hidToImitate, nextHid in hidToImitate) # TODO this isn't really a meaningful metric anymore... (counts when a shopkeeper action follows another shopkeeper action)
     if hidSeq not in actionHidSequenceCounts:
         actionHidSequenceCounts[hidSeq] = 0
     actionHidSequenceCounts[hidSeq] += 1
@@ -503,6 +513,7 @@ shkpUttToVector[""] = np.zeros(shkpUttVecShape)
 #
 print("Creating the input vectors...")
 
+# who acted bit + customer at from to + shopkeeper at from to (two shopkeepers)
 inputVecNonSpeechLen = 3 + (len(custStopLocClustIDToName) + 1) * 3 + (len(shkpStopLocClustIDToName) + 1) * 6
 inputVecSpeechLen = custUttVecShape[0] + shkpUttVecShape[0]
 
