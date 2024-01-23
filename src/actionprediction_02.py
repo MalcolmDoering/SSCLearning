@@ -15,6 +15,7 @@ import pickle
 from multiprocessing import Process
 from collections import OrderedDict
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+import random
 
 import tools
 
@@ -28,7 +29,10 @@ def split_list(a, n):
 # file paths
 #################################################################################################################
 
-evaluationDataDir = tools.dataDir + "20231120-152207_actionPredictionPreprocessing/"
+#evaluationDataDir = tools.dataDir + "20231120-152207_actionPredictionPreprocessing/" # input len 5
+evaluationDataDir = tools.dataDir + "20231201-123808_actionPredictionPreprocessing/" # input len 3
+#evaluationDataDir = tools.dataDir + "20231205-144553_actionPredictionPreprocessing/" # input len 1
+
 
 interactionDataFilename = "20230807-141847_processForSpeechClustering/20230623_SSC_3_trueMotionTargets_3_speechMotionCombined.csv"
 speechClustersFilename = "20230731-113400_speechClustering/all_shopkeeper- speech_clusters - levenshtein normalized medoid.csv"
@@ -58,8 +62,8 @@ def main(mainDir, condition, gpuCount):
 
     # params that should be the same for all conditions (predictors)
     batchSize = 8
-    randomizeTrainingBatches = False
-    numEpochs = 2000
+    randomizeTrainingBatches = True
+    numEpochs = 500
     evalEvery = 1
     minClassCount = 2
 
@@ -164,6 +168,10 @@ def main(mainDir, condition, gpuCount):
         expIDToIndices[expID].append(i)
 
     expIDs = list(expIDToIndices.keys())
+    
+    random.seed(0)
+    random.shuffle(expIDs)
+    
     expIDFolds = split_list(expIDs, NUM_FOLDS)
 
     trainExpIDFolds = []
@@ -209,7 +217,8 @@ def main(mainDir, condition, gpuCount):
     #################################################################################################################
     
     def run_fold(randomSeed, foldId, gpu):
-        
+        #random.seed(randomSeed)
+
         #################################################################################################################
         # setup logging directories
         #################################################################################################################
@@ -618,7 +627,7 @@ def main(mainDir, condition, gpuCount):
             bl2_inputDim = bl2_inputVectorsCombined.shape[2]
             bl2_inputSeqLen = bl2_inputVectorsCombined.shape[1]
             bl2_numOutputClasses = bl2_numActionClusters
-            bl2_embeddingSize = 100
+            bl2_embeddingSize = 1200
 
             learner = learning.SimpleFeedforwardNetwork(bl2_inputDim, 
                                                         bl2_inputSeqLen, 
@@ -626,7 +635,9 @@ def main(mainDir, condition, gpuCount):
                                                         batchSize, 
                                                         bl2_embeddingSize,
                                                         randomSeed,
-                                                        bl2_outputClassWeights)
+                                                        bl2_outputClassWeights,
+                                                        learningRate=5e-6,
+                                                        useAttention=False)
             
         elif bl3_run:
             bl3_inputDim = bl3_inputVectorsCombined.shape[2]
@@ -642,7 +653,7 @@ def main(mainDir, condition, gpuCount):
                                                                     randomSeed,
                                                                     bl3_outputSpeechClassWeights,
                                                                     bl3_outputMotionClassWeights,
-                                                                    learningRate=1e-4)
+                                                                    learningRate=1e-5)
         
         elif prop_run:
             pass
@@ -663,10 +674,14 @@ def main(mainDir, condition, gpuCount):
                 
                 if e != 0:
                     # train
+                    if randomizeTrainingBatches:
+                        trainIndicesTemp = random.sample(trainIndices, len(trainIndices))
+                    else:
+                        trainIndicesTemp = trainIndices
 
-                    learner.train(bl1_inputVectorsCombined[trainIndices], 
-                                  bl1_isHidToImitate[trainIndices], 
-                                  bl1_outputMasks[trainIndices])
+                    learner.train(bl1_inputVectorsCombined[trainIndicesTemp], 
+                                  bl1_isHidToImitate[trainIndicesTemp], 
+                                  bl1_outputMasks[trainIndicesTemp])
                 
                 
                 # evaluate
@@ -869,10 +884,14 @@ def main(mainDir, condition, gpuCount):
                 
                 if e != 0:
                     # train
+                    if randomizeTrainingBatches:
+                        trainIndicesTemp = random.sample(trainIndices, len(trainIndices))
+                    else:
+                        trainIndicesTemp = trainIndices
 
-                    learner.train(bl2_inputVectorsCombined[trainIndices], 
-                                  bl2_outputActionIDs[trainIndices], 
-                                  bl2_outputMasks[trainIndices])
+                    learner.train(bl2_inputVectorsCombined[trainIndicesTemp], 
+                                  bl2_outputActionIDs[trainIndicesTemp], 
+                                  bl2_outputMasks[trainIndicesTemp])
                 
                 
                 # evaluate
@@ -1092,11 +1111,15 @@ def main(mainDir, condition, gpuCount):
                 
                 if e != 0:
                     # train
+                    if randomizeTrainingBatches:
+                        trainIndicesTemp = random.sample(trainIndices, len(trainIndices))
+                    else:
+                        trainIndicesTemp = trainIndices
 
-                    learner.train(bl3_inputVectorsCombined[trainIndices], 
-                                  bl3_outputSpeechClusterIDs[trainIndices],
-                                  bl3_outputSpatialInfo[trainIndices],
-                                  bl3_outputMasks[trainIndices])
+                    learner.train(bl3_inputVectorsCombined[trainIndicesTemp], 
+                                  bl3_outputSpeechClusterIDs[trainIndicesTemp],
+                                  bl3_outputSpatialInfo[trainIndicesTemp],
+                                  bl3_outputMasks[trainIndicesTemp])
                 
                 
                 # evaluate
@@ -1366,7 +1389,7 @@ def main(mainDir, condition, gpuCount):
 #
 gpuCount = 0
 
-gpuCount = main(mainDir, "baseline3", gpuCount)
+gpuCount = main(mainDir, "baseline2", gpuCount)
 #gpuCount = main(mainDir, "baseline1", gpuCount)
 
 

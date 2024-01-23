@@ -25,7 +25,8 @@ class SimpleFeedforwardNetwork(object):
                  embeddingSize,
                  seed,
                  outputClassWeights,
-                 learningRate=1e-3):
+                 learningRate=1e-3,
+                 useAttention=False):
         
         self.inputDim = inputDim
         self.inputSeqLen = inputSeqLen
@@ -35,6 +36,7 @@ class SimpleFeedforwardNetwork(object):
         self.seed = seed
         self.outputClassWeights = outputClassWeights
         self.learningRate = learningRate
+        self.useAttention = useAttention
         
         tf.reset_default_graph()
         tf.set_random_seed(seed)
@@ -75,8 +77,16 @@ class SimpleFeedforwardNetwork(object):
             inputs_condensed = tf.reshape(inputs_reshaped_condensed, [self.batchSize, self.inputSeqLen, self.embeddingSize])
             
             
-            # then feed the sequence of condensed inputs into an two layer feed forward network
-            inputs_condensed_reshaped = tf.reshape(self.input_sequences, [self.batchSize, self.inputSeqLen*self.inputDim])
+            # optional attention network...
+            if self.useAttention:
+                attention = tf.keras.layers.MultiHeadAttention(num_heads=self.inputSeqLen, key_dim=self.inputSeqLen)(inputs_condensed, inputs_condensed)            
+                inputs_condensed_reshaped = tf.reduce_sum(attention, axis=1)
+
+            else:
+                # without the attention network
+                # TODO - problem here? It doesn't use the condensed inputs?
+                inputs_condensed_reshaped = tf.reshape(inputs_condensed, [self.batchSize, self.inputSeqLen*self.embeddingSize])
+            
             
             inputs_condensed_reshaped_condensed = tf.layers.dense(inputs_condensed_reshaped,
                                                                   self.embeddingSize,
@@ -279,8 +289,8 @@ class SimpleFeedforwardNetworkSplitOutputs(object):
                  seed,
                  outputSpeechClassWeights,
                  outputMotionClassWeights,
-                 learningRate
-                 ):
+                 learningRate,
+                 useAttention=False):
         
         self.inputDim = inputDim
         self.inputSeqLen = inputSeqLen
@@ -292,6 +302,7 @@ class SimpleFeedforwardNetworkSplitOutputs(object):
         self.outputSpeechClassWeights = outputSpeechClassWeights
         self.outputMotionClassWeights = outputMotionClassWeights
         self.learningRate = learningRate
+        self.useAttention = useAttention
         
         tf.reset_default_graph()
         tf.set_random_seed(seed)
@@ -338,14 +349,17 @@ class SimpleFeedforwardNetworkSplitOutputs(object):
             
             
             # optional attention network...
-            attention = tf.keras.layers.MultiHeadAttention(num_heads=self.inputSeqLen, key_dim=self.inputSeqLen)(inputs_condensed, inputs_condensed)            
-            inputs_condensed_reshaped = tf.reduce_sum(attention, axis=1)
-            
-            
+            if self.useAttention:
+                attention = tf.keras.layers.MultiHeadAttention(num_heads=self.inputSeqLen, key_dim=self.inputSeqLen)(inputs_condensed, inputs_condensed)            
+                inputs_condensed_reshaped = tf.reduce_sum(attention, axis=1)
+
+            else:
+                # without the attention network
+                # TODO - problem here? It doesn't use the condensed inputs?
+                inputs_condensed_reshaped = tf.reshape(self.input_sequences, [self.batchSize, self.inputSeqLen*self.inputDim])
+
+
             # then feed the sequence of condensed inputs into an two layer feed forward network
-            # uncomment this to use without the attention network
-            #inputs_condensed_reshaped = tf.reshape(self.input_sequences, [self.batchSize, self.inputSeqLen*self.inputDim])
-            
             inputs_condensed_reshaped_condensed = tf.layers.dense(inputs_condensed_reshaped,
                                                                   self.embeddingSize,
                                                                   activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.he_normal())
