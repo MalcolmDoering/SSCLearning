@@ -39,6 +39,24 @@ expLogName = "20231124-134508_actionPrediction_02/baseline3" # 800 hidden, 1e-3 
 expLogName = "20231124-144932_actionPrediction_02/baseline3" # 800 hidden, 1e-3 learning rate, attention, 2000 epochs
 expLogName = "20231127-133651_actionPrediction_02/baseline3" # 800 hidden, 1e-4 learning rate, attention, 2000 epochs
 
+expLogName = "20231129-164249_actionPrediction_02/baseline3" # 800 hidden, 1e-4 learning rate, attention, 2000 epochs, expIDs randomized
+expLogName = "20231129-164249_actionPrediction_02/baseline3" # 800 hidden, 1e-4 learning rate, attention, 2000 epochs, expIDs randomized, training randomized
+
+expLogName = "20231130-165457_actionPrediction_02/baseline3" # 800 hidden, 1e-5 learning rate, attention, 2000 epochs, expIDs randomized, training randomized
+expLogName = "20231201-124435_actionPrediction_02/baseline3" # 800 hidden, 1e-5 learning rate, attention, 2000 epochs, expIDs randomized, training randomized, 3 input len
+
+expLogName = "20231205-145358_actionPrediction_02/baseline3" # 800 hidden, 1e-5 learning rate, no attention, 500 epochs, expIDs randomized, training randomized, 1 input len
+expLogName = "20231206-104339_actionPrediction_02/baseline2" # 800 hidden, 1e-5 learning rate, no attention, 500 epochs, expIDs randomized, training randomized, 1 input len, action clusters
+#expLogName = "20231206-153533_actionPrediction_02/baseline2" # 800 hidden, 1e-5 learning rate, no attention, 500 epochs, expIDs randomized, training randomized, 3 input len, action clusters
+
+expLogName = "20231207-105917_actionPrediction_02/baseline2" # 800 hidden, 1e-5 learning rate, no attention, 500 epochs, expIDs randomized, training randomized, 3 input len, action clusters, fixed input embedding
+expLogName = "20231207-160643_actionPrediction_02/baseline2" # 800 hidden, 1e-5 learning rate, no attention, 500 epochs, expIDs randomized, training randomized, 3 input len, action clusters, fixed input embedding (accidentally ran it twice)
+
+expLogName = "20231208-121643_actionPrediction_02/baseline2" # 800 hidden, 1e-5 learning rate, with attention, 500 epochs, expIDs randomized, training randomized, 3 input len, action clusters, fixed input embedding
+expLogName = "20231208-180817_actionPrediction_02/baseline2" # 1200 hidden, 1e-5 learning rate, with attention, 500 epochs, expIDs randomized, training randomized, 3 input len, action clusters, fixed input embedding
+expLogName = "20231214-152749_actionPrediction_02/baseline2" # 1200 hidden, 5e-6 learning rate, with attention, 500 epochs, expIDs randomized, training randomized, 3 input len, action clusters, fixed input embedding
+
+
 
 
 expLogDir = tools.logDir+"/"+expLogName
@@ -556,7 +574,15 @@ if "baseline1" in expLogName:
 
 
 # for baseline 2
-elif "baseline2" in expLogDir or "baseline3" in expLogDir:
+elif "baseline2" in expLogDir:
+    save_1_metric_graph(runIdToData, "Loss Ave")
+    save_1_metric_graph(runIdToData, "Action Accuracy")
+    save_1_metric_graph(runIdToData, "Speech Accuracy")
+    save_1_metric_graph(runIdToData, "Spatial Accuracy")    
+
+
+# for baseline 3
+elif "baseline3" in expLogDir:
     save_1_metric_graph(runIdToData, "Loss Ave")
     save_1_metric_graph(runIdToData, "Speech Loss Ave")
     save_1_metric_graph(runIdToData, "Motion Loss Ave")
