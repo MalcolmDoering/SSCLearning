@@ -57,6 +57,12 @@ expLogName = "20231208-180817_actionPrediction_02/baseline2" # 1200 hidden, 1e-5
 expLogName = "20231214-152749_actionPrediction_02/baseline2" # 1200 hidden, 5e-6 learning rate, with attention, 500 epochs, expIDs randomized, training randomized, 3 input len, action clusters, fixed input embedding
 
 
+expLogName = "20240124-115548_actionPrediction_02/baseline5" # 1200 hidden, 1e-4 learning rate, no attention, 1-1-1 layers, 1000 epochs, mementar, loss sum over mask sum
+
+
+
+
+
 
 
 expLogDir = tools.logDir+"/"+expLogName
@@ -590,6 +596,12 @@ elif "baseline3" in expLogDir:
     save_1_metric_graph(runIdToData, "Speech Accuracy")
     save_1_metric_graph(runIdToData, "Spatial Accuracy")
 
+# for baseline 5
+elif "baseline5" in expLogDir:
+    save_1_metric_graph(runIdToData, "Loss Ave")
+    save_1_metric_graph(runIdToData, "Action Accuracy")
+    save_1_metric_graph(runIdToData, "Speech Accuracy")
+    save_1_metric_graph(runIdToData, "Spatial Accuracy")
 
 
 print("Done.")
