@@ -26,7 +26,8 @@ class SimpleFeedforwardNetwork(object):
                  seed,
                  outputClassWeights,
                  learningRate=1e-3,
-                 useAttention=False):
+                 useAttention=False,
+                 numAdditionalInputs = None):
         
         self.inputDim = inputDim
         self.inputSeqLen = inputSeqLen
@@ -37,6 +38,7 @@ class SimpleFeedforwardNetwork(object):
         self.outputClassWeights = outputClassWeights
         self.learningRate = learningRate
         self.useAttention = useAttention
+        self.numAdditionalInputs = numAdditionalInputs
         
         tf.reset_default_graph()
         tf.set_random_seed(seed)
@@ -48,7 +50,9 @@ class SimpleFeedforwardNetwork(object):
         
         # inputs
         self.input_sequences = tf.placeholder(tf.float32, [self.batchSize, self.inputSeqLen, self.inputDim], name="input_sequences")
-        
+        if self.numAdditionalInputs != None:
+            self.additional_inputs = tf.placeholder(tf.int32, [self.batchSize, self.numAdditionalInputs], name="additional_inputs")
+
         # targets
         self.shopkeeper_action_id_targets = tf.placeholder(tf.int32, [self.batchSize, ], name="action_id_targets")
         self.shopkeeper_action_id_targets_onehot = tf.one_hot(self.shopkeeper_action_id_targets, self.numOutputClasses)
@@ -64,16 +68,25 @@ class SimpleFeedforwardNetwork(object):
         with tf.variable_scope("input_encoder"):
             
             # first condense the input vector from each turn (2 layers)
+
+            # first layer
             inputs_reshaped = tf.reshape(self.input_sequences, [self.batchSize*self.inputSeqLen, self.inputDim])
             
             inputs_reshaped_condensed = tf.layers.dense(inputs_reshaped,
                                                         self.embeddingSize,
                                                         activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.he_normal())
             
-            inputs_reshaped_condensed = tf.layers.dense(inputs_reshaped_condensed,
-                                                        self.embeddingSize,
-                                                        activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.he_normal())
-                                                        
+            # second layer
+            #inputs_reshaped_condensed = tf.layers.dense(inputs_reshaped_condensed,
+            #                                            self.embeddingSize,
+            #                                            activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.he_normal())
+
+            # third layer
+            #inputs_reshaped_condensed = tf.layers.dense(inputs_reshaped_condensed,
+            #                                            self.embeddingSize,
+            #                                            activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.he_normal())
+                 
+
             inputs_condensed = tf.reshape(inputs_reshaped_condensed, [self.batchSize, self.inputSeqLen, self.embeddingSize])
             
             
@@ -87,14 +100,23 @@ class SimpleFeedforwardNetwork(object):
                 # TODO - problem here? It doesn't use the condensed inputs?
                 inputs_condensed_reshaped = tf.reshape(inputs_condensed, [self.batchSize, self.inputSeqLen*self.embeddingSize])
             
+
+            if self.numAdditionalInputs != None:
+                # add the additional inputs here...
+                inputs_condensed_reshaped = tf.concat([inputs_condensed_reshaped, tf.cast(self.additional_inputs, tf.float32)], axis=1)
+
             
+            # then put all the inputs from each turn together through some more layers
+                
+            # first layer
             inputs_condensed_reshaped_condensed = tf.layers.dense(inputs_condensed_reshaped,
                                                                   self.embeddingSize,
                                                                   activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.he_normal())
-            
-            inputs_condensed_reshaped_condensed = tf.layers.dense(inputs_condensed_reshaped,
-                                                                  self.embeddingSize,
-                                                                  activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.he_normal())
+
+            # second layer
+            #inputs_condensed_reshaped_condensed = tf.layers.dense(inputs_condensed_reshaped,
+            #                                                      self.embeddingSize,
+            #                                                      activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.he_normal())
             
 
         # output decoding
@@ -111,12 +133,23 @@ class SimpleFeedforwardNetwork(object):
             actionLossWeights = tf.squeeze(tf.gather_nd(tf.expand_dims(self.outputClassWeightsTensor, 1), tf.expand_dims(self.shopkeeper_action_id_targets, 1)))
             actionLossWeights = tf.dtypes.cast(self.output_mask, tf.float32) * actionLossWeights
             
+
+            #self.output_action_loss_old = tf.losses.softmax_cross_entropy(self.shopkeeper_action_id_targets_onehot, 
+            #                                                              self.output_action_decoder,
+            #                                                              weights=actionLossWeights,
+            #                                                              reduction=tf.losses.Reduction.SUM_OVER_BATCH_SIZE)
+
             self.output_action_loss = tf.losses.softmax_cross_entropy(self.shopkeeper_action_id_targets_onehot, 
                                                                           self.output_action_decoder,
                                                                           weights=actionLossWeights,
-                                                                          reduction=tf.losses.Reduction.SUM_OVER_BATCH_SIZE)
+                                                                          reduction=tf.losses.Reduction.NONE) #SUM_OVER_BATCH_SIZE)
             
             self.loss = self.output_action_loss
+
+            self.loss_sum_over_mask_sum = tf.math.divide_no_nan(tf.reduce_sum(self.loss), tf.cast(tf.reduce_sum(self.output_mask), dtype=tf.float32))
+
+            # in case we get nan because the mask sums to 0
+            #self.loss_sum_over_mask_sum = tf.where(tf.is_nan(self.loss_sum_over_mask_sum), tf.ones_like(self.loss_sum_over_mask_sum), self.loss_sum_over_mask_sum)
         
         
         #
@@ -134,7 +167,7 @@ class SimpleFeedforwardNetwork(object):
         #
         # for training the entire network
         #
-        gradients = opt.compute_gradients(self.loss)
+        gradients = opt.compute_gradients(self.loss_sum_over_mask_sum ) #self.loss)
         #tf.check_numerics(gradients, "gradients")
         capped_gradients = [(tf.clip_by_value(grad, -1., 1.), var) for grad, var in gradients if grad is not None]
         
@@ -176,7 +209,8 @@ class SimpleFeedforwardNetwork(object):
     def train(self, 
               inputSequenceVectors,
               outputActionIds,
-              outputMasks):
+              outputMasks,
+              additionalInputs=None):
         
         batchStartEndIndices = self.get_batches(len(outputActionIds))
         
@@ -191,6 +225,9 @@ class SimpleFeedforwardNetwork(object):
                         self.shopkeeper_action_id_targets: outputActionIds[sei[0]:sei[1]], 
                         self.output_mask: outputMasks[sei[0]:sei[1]],
                         self.outputClassWeightsTensor: self.outputClassWeights}
+
+            if self.numAdditionalInputs != None:
+                feedDict[self.additional_inputs] = additionalInputs[sei[0]:sei[1]]
             
             loss, shopkeeper_action_loss,  _ = self.sess.run([self.loss, self.output_action_loss, self.train_op], feed_dict=feedDict)
 
@@ -206,7 +243,8 @@ class SimpleFeedforwardNetwork(object):
     def get_loss(self, 
               inputSequenceVectors,
               outputActionIds,
-              outputMasks):
+              outputMasks,
+              additionalInputs=None):
         
         batchStartEndIndices = self.get_batches(len(outputActionIds))
         
@@ -221,6 +259,9 @@ class SimpleFeedforwardNetwork(object):
                         self.shopkeeper_action_id_targets: outputActionIds[sei[0]:sei[1]], 
                         self.output_mask: outputMasks[sei[0]:sei[1]],
                         self.outputClassWeightsTensor: self.outputClassWeights}
+
+            if self.numAdditionalInputs != None:
+                feedDict[self.additional_inputs] = additionalInputs[sei[0]:sei[1]]
             
             loss, shopkeeper_action_loss = self.sess.run([self.loss, self.output_action_loss], feed_dict=feedDict)
             
@@ -235,7 +276,8 @@ class SimpleFeedforwardNetwork(object):
     def predict(self, 
               inputSequenceVectors,
               outputActionIds,
-              outputMasks):
+              outputMasks,
+              additionalInputs=None):
         
         batchStartEndIndices = self.get_batches(len(outputActionIds))
         
@@ -249,6 +291,9 @@ class SimpleFeedforwardNetwork(object):
                         self.shopkeeper_action_id_targets: outputActionIds[sei[0]:sei[1]], 
                         self.output_mask: outputMasks[sei[0]:sei[1]],
                         self.outputClassWeightsTensor: self.outputClassWeights}
+
+            if self.numAdditionalInputs != None:
+                feedDict[self.additional_inputs] = additionalInputs[sei[0]:sei[1]]
             
             predShkpActionID = self.sess.run(self.output_action_argmax, feedDict)
             
@@ -272,7 +317,6 @@ class SimpleFeedforwardNetwork(object):
     
     def reset_optimizer(self):    
         self.sess.run(self.reset_optimizer_op)
-
 
 
 

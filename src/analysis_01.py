@@ -56,21 +56,90 @@ expLogName = "20231208-121643_actionPrediction_02/baseline2" # 800 hidden, 1e-5 
 expLogName = "20231208-180817_actionPrediction_02/baseline2" # 1200 hidden, 1e-5 learning rate, with attention, 500 epochs, expIDs randomized, training randomized, 3 input len, action clusters, fixed input embedding
 expLogName = "20231214-152749_actionPrediction_02/baseline2" # 1200 hidden, 5e-6 learning rate, with attention, 500 epochs, expIDs randomized, training randomized, 3 input len, action clusters, fixed input embedding
 
+expLogName = "20240124-115548_actionPrediction_02/baseline5" # 1200 hidden, 1e-4 learning rate, no attention, 1-1-1 layers, 1000 epochs, mementar
 
-expLogName = "20240124-115548_actionPrediction_02/baseline5" # 1200 hidden, 1e-4 learning rate, no attention, 1-1-1 layers, 1000 epochs, mementar, loss sum over mask sum
+expLogName = "20240124-194354_actionPrediction_02/baseline5" # 1200 hidden, 1e-4 learning rate, no attention, 1-1-1 layers, 1000 epochs, mementar, loss sum over mask sum
+expLogName = "20240125-113525_actionPrediction_02/baseline5" # 1200 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 1000 epochs, mementar, loss sum over mask sum
+expLogName = "20240202-191816_actionPrediction_02/baseline5" # 1200 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 1000 epochs, mementar full input, loss sum over mask sum
+
+#expLogName = "20240125-185053_actionPrediction_02/baseline6" # 1200 hidden, 1e-4 learning rate, no attention, 1-1-1 layers, 500 epochs, mementar, loss sum over mask sum, both shopkeepers
+
+#expLogName = "20240206-191349_actionPrediction_02/baseline2" # 1200 hidden, 1e-4 learning rate, no attention, 1-1-1 layers, 500 epochs, original, loss sum over mask sum, S2 only
+#expLogName = "20240207-132053_actionPrediction_02/baseline2" # 1200 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 500 epochs, original, loss sum over mask sum, S2 only
+
+expLogName = "20240207-160400_actionPrediction_02/baseline1" # 1200 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 50 epochs, original, loss sum over mask sum, predicting when S2 acts
+
+
+
+expLogName = "20240215-124211_actionPrediction_02/baseline5" # 1200 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 200 epochs, mementar full, loss sum over mask sum, action prediction
+expLogName = "20240215-124211_actionPrediction_02/baseline7" # 1200 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 200 epochs, mementar full, loss sum over mask sum, predicting when S2 acts
+
+
+expLogName = "20240226-175614_actionPrediction_02/baseline4" # 1200 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 200 epochs, non-mementar, loss sum over mask sum, both shopkeepers
+
+
+# current push
+expLogName = "20240227-171518_actionPrediction_02/baseline1" # 1000 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 200 epochs, non-mementar, loss sum over mask sum, predicting when S2 acts
+expLogName = "20240227-171518_actionPrediction_02/baseline2" # 1000 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 200 epochs, non-mementar, loss sum over mask sum, action prediction
+expLogName = "20240227-171518_actionPrediction_02/baseline4" # 1000 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 200 epochs, non-mementar, loss sum over mask sum, both shopkeepers
+expLogName = "20240227-171518_actionPrediction_02/baseline5" # 1000 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 200 epochs, mementar, loss sum over mask sum, action prediction
+#expLogName = "20240227-171518_actionPrediction_02/baseline6" # 1000 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 200 epochs, mementar, loss sum over mask sum, both shopkeepers
+#expLogName = "20240227-171518_actionPrediction_02/baseline7" # 1000 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 200 epochs, mementar, loss sum over mask sum, predicting when S2 acts
+"""
+expLogName = "20240304-154651_actionPrediction_02/baseline1" # 1000 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 200 epochs, non-mementar, 3 len input, loss sum over mask sum, predicting when S2 acts
+expLogName = "20240304-154651_actionPrediction_02/baseline2" # 1000 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 200 epochs, non-mementar, 3 len input, loss sum over mask sum, action prediction
+expLogName = "20240304-154651_actionPrediction_02/baseline4" # 1000 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 200 epochs, non-mementar, 3 len input, loss sum over mask sum, both shopkeepers
+
+expLogName = "20240306-144838_actionPrediction_02/baseline4" # 1000 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 200 epochs, non-mementar, 3 len input, loss sum over mask sum, both shopkeepers. only S2 after e150
+expLogName = "20240306-185213_actionPrediction_02/baseline4" # 1000 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 500 epochs, non-mementar, 3 len input, loss sum over mask sum, both shopkeepers. only S2 after e250
+
+expLogName = "20240307-111829_actionPrediction_02/baseline2" # 1000 hidden, 1e-5 learning rate, no attention, 3-1-1 layers, 200 epochs, non-mementar, 3 len input, loss sum over mask sum, action prediction
+expLogName = "20240307-111829_actionPrediction_02/baseline4" # 1000 hidden, 1e-5 learning rate, no attention, 3-1-1 layers, 200 epochs, non-mementar, 3 len input, loss sum over mask sum, both shopkeepers
+
+expLogName = "20240307-183915_actionPrediction_02/baseline2" # 1000 hidden, 1e-5 learning rate, with attention, 3-1-1 layers, 200 epochs, non-mementar, 3 len input, loss sum over mask sum, action prediction
+expLogName = "20240307-183915_actionPrediction_02/baseline4" # 1000 hidden, 1e-5 learning rate, with attention, 3-1-1 layers, 200 epochs, non-mementar, 3 len input, loss sum over mask sum, both shopkeepers
+
+expLogName = "20240314-152228_actionPrediction_02/baseline1" # 1000 hidden, 1e-5 learning rate, no attention, 3-1-1 layers, 200 epochs, non-mementar, loss sum over mask sum, predicting when S2 acts
+#expLogName = "20240314-152228_actionPrediction_02/baseline2" # 1000 hidden, 1e-5 learning rate, no attention, 3-1-1 layers, 200 epochs, non-mementar, loss sum over mask sum, action prediction
+#expLogName = "20240314-152228_actionPrediction_02/baseline4" # 1000 hidden, 1e-5 learning rate, no attention, 3-1-1 layers, 200 epochs, non-mementar, loss sum over mask sum, both shopkeepers
+"""
+
+# with non action states removed
+expLogName = "20240318-175457_actionPrediction_02/baseline5" # 1000 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 200 epochs, mementar, loss sum over mask sum, action prediction
+#expLogName = "20240318-175457_actionPrediction_02/baseline6" # 1000 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 200 epochs, mementar, loss sum over mask sum, both shopkeepers
+#expLogName = "20240318-175457_actionPrediction_02/baseline7" # 1000 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 200 epochs, mementar, loss sum over mask sum, predicting when S2 acts
+
+expLogName = "20240325-133211_actionPrediction_02_testxy/baseline5" # 1000 hidden, 1e-5 learning rate, no attention, 1-1-1 layers, 200 epochs, mementar, loss sum over mask sum, action prediction
 
 
 
 
 
+descriptor = "inputlen=1, 1layerencoding "
+
+if "baseline1" in expLogName:
+    descriptor += "S2 Turn Taking"
+elif "baseline2" in expLogName:
+    descriptor += "S2 Action"
+elif "baseline4" in expLogName:
+    descriptor += "S1+S2 Action"
+elif "baseline5" in expLogName:
+    descriptor += "S2 Action w/ KnowMan."
+elif "baseline6" in expLogName:
+    descriptor += "S1+S2 Action w/ KnowMan."
+elif "baseline7" in expLogName:
+    descriptor += "S2 Turn Taking w/ KnowMan."
+
+
+maxEpoch = None
+#maxEpoch = 200
 
 
 expLogDir = tools.logDir+"/"+expLogName
 
 
 
-sessionDir = sessionDir = tools.create_session_dir("analysis_01")
-
+sessionDir = tools.create_session_dir("analysis_01_" + expLogName.split("/")[-1])
 
 
 def plot_2_conditions_3_metrics(runIdToData, runIds, metric1Name, metric2Name, metric3Name):
@@ -474,7 +543,7 @@ def plot_2_conditions_4_metrics(runIdToData, runIds, metric1Name, metric2Name, m
     plt.show()
 
 
-def save_1_metric_graph(runIdToData, metricName):
+def save_1_metric_graph(runIdToData, metricName, shopkeeper=None):
     
     datasets = ["Training", "Validation", "Testing"]
     
@@ -490,25 +559,48 @@ def save_1_metric_graph(runIdToData, metricName):
         labels = []
         
         for rId, df in runIdToData.items():
-            
-            df.plot(x="Epoch", y="{} {} ({})".format(ds, metricName, rId), kind="line", ax=axes[i], legend=None) #, xlim=(0,1500), ylim=(0,0.1))
+            if maxEpoch != None:
+                df = df[:maxEpoch]
+
+            if shopkeeper == None:
+                y="{} {} ({})".format(ds, metricName, rId)
+            else:
+                y="{} {} {} ({})".format(shopkeeper, ds, metricName, rId)
+
+            df.plot(x="Epoch", y=y, kind="line", ax=axes[i], legend=None) #, xlim=(0,1500), ylim=(0,0.1))
             labels.append(rId)
-        
+
             axes[i].set_title(ds)
             axes[i].set_xlabel(None)
-    
+
+            padding = 0.01
+
+            if "Loss" in metricName:
+                #axes[i].set_ylim(-1*padding, 8.0 + padding)
+                #axes[i].set_ylim(-1*padding, 1.0 + padding)
+                pass
+            else:
+                axes[i].set_ylim(-1*padding, 1.0 + padding)
     
     axes[i].legend(labels);
     
-    fig.suptitle(metricName)
-    
+    if shopkeeper == None:
+        fig.suptitle(metricName+" | "+descriptor)
+    else:
+        fig.suptitle(shopkeeper+" "+metricName+" | "+descriptor)
+
     fig.add_subplot(111, frameon=False)
     # hide tick and tick label of the big axes
     plt.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
     plt.grid(False)
     plt.xlabel("Epoch")
     
-    fig.savefig((sessionDir+"/{} Average.png".format(metricName.replace(" Ave", ""))), format="png")
+    if shopkeeper == None:        
+        figFileName = sessionDir+"/{} Average.png".format(metricName.replace(" Ave", ""))
+    else:
+        figFileName = sessionDir+"/{} {} Average.png".format(shopkeeper, metricName.replace(" Ave", ""))
+
+    fig.savefig(figFileName, format="png")
     #plt.show()
 
 
@@ -566,7 +658,7 @@ for iId in runIds:
 
 
 # for baseline 1
-if "baseline1" in expLogName:
+if "baseline1" in expLogName or "baseline7" in expLogName:
     save_1_metric_graph(runIdToData, "Loss Ave")
     save_1_metric_graph(runIdToData, "Action Accuracy")
 
@@ -602,6 +694,27 @@ elif "baseline5" in expLogDir:
     save_1_metric_graph(runIdToData, "Action Accuracy")
     save_1_metric_graph(runIdToData, "Speech Accuracy")
     save_1_metric_graph(runIdToData, "Spatial Accuracy")
+
+# for baseline 6
+elif "baseline6" in expLogDir or "baseline4" in expLogDir:
+    save_1_metric_graph(runIdToData, "Loss Ave")
+    save_1_metric_graph(runIdToData, "Action Accuracy")
+    save_1_metric_graph(runIdToData, "Speech Accuracy")
+    save_1_metric_graph(runIdToData, "Spatial Accuracy")
+
+    save_1_metric_graph(runIdToData, "Loss Ave", "S1")
+    save_1_metric_graph(runIdToData, "Action Accuracy", "S1")
+    save_1_metric_graph(runIdToData, "Speech Accuracy", "S1")
+    save_1_metric_graph(runIdToData, "Spatial Accuracy", "S1")
+
+    save_1_metric_graph(runIdToData, "Loss Ave", "S2")
+    save_1_metric_graph(runIdToData, "Action Accuracy", "S2")
+    save_1_metric_graph(runIdToData, "Speech Accuracy", "S2")
+    save_1_metric_graph(runIdToData, "Spatial Accuracy", "S2")
+
+
+with open(sessionDir+"condition.txt", "w") as f:
+    f.write(expLogDir)
 
 
 print("Done.")

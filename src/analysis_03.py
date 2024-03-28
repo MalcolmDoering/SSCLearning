@@ -41,10 +41,7 @@ uniqueIDToIdentifier = {1: "shopkeeper1",
 robotUniqueID = 3
 
 
-#predictionsFilename = "E:/eclipse-log/20230809-100857_analysis_02/all_predictions_combined.csv"
-#predictionsFilename = "E:/eclipse-log/20231121-102537_analysis_02_/all_predictions_combined.csv"
-predictionsFilename = "E:/eclipse-log/20231121-163948_analysis_02_/all_predictions_combined.csv"
-predictionsFilename = "E:/eclipse-log/20231124-104902_analysis_02/all_predictions_combined.csv" # 800 hidden, 1e-4 learning rate
+predictionsFilename = "E:/eclipse-log/20240315-134656_analysis_02/all_predictions_combined.csv" #
 
 
 sessionDir = sessionDir = tools.create_session_dir("analysis_03")
