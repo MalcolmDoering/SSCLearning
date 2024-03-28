@@ -80,11 +80,18 @@ with connection:
 experimentIDToStartStopTime = {}
 experimentIDToConditions = {}
 experimentIDToParticipantID = {}
+durations = []
 
 for e in experimentInfo:
     experimentIDToStartStopTime[e[1]] = (e[4], e[5])
     experimentIDToConditions[e[1]] = e[6]
     experimentIDToParticipantID[e[1]] = int(experimentIDToConditions[e[1]][:2])
+    durations.append(e[5] - e[4])
+
+
+totalDuration = sum(durations)
+aveDuration = np.mean(durations)
+stdDuration = np.std(durations)
 
 """ 
 #

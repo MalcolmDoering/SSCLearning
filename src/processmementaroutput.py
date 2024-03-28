@@ -9,6 +9,7 @@ import numpy as np
 import copy
 import os
 from tqdm import tqdm
+from collections import OrderedDict
 
 import tools
 
@@ -16,13 +17,16 @@ import tools
 sessionDir = tools.create_session_dir("processmementaroutput")
 
 
+fullInput = True
+
 groundTruthParticipant = "shopkeeper2"
 outputBothShokeeperActions = True
 inputLen = 1
 
 mementarDir = tools.dataDir + "MementarOutput_cas_800_16_50_offline_starttime_p_0606_5s/"
 #mementarDir = tools.dataDir + "MementarOutputs_cas_800_16_50_offline_starttime_ge_p_0606_5s/"
-
+#mementarDir = tools.dataDir + "MementarOutput__cas_800_16_50_offline_starttime_p_0606_5s_withxy/"
+#mementarDir = tools.dataDir + "20240325/" # with isMoving and xy
 
 speechClustersFilename = "20230731-113400_speechClustering/all_shopkeeper- speech_clusters - levenshtein normalized medoid.csv"
 
@@ -30,17 +34,35 @@ speechClustersFilename = "20230731-113400_speechClustering/all_shopkeeper- speec
 participants = ["shopkeeper1", "shopkeeper2", "customer"]
 roomAreas = ["None", "sony_area", "canon_area", "nikon_area", "service_counter_area", "printer_desk_area", "shelf_area", "entrance_area"]
 participantAreas = [p+"_area" for p in participants]
+otherAreas = ["shop_area"]
+
+if groundTruthParticipant == "shopkeeper2":
+    ontologyNameToDbName={"robot_agent":"shopkeeper2",
+                            "human1_agent":"shopkeeper1",
+                            "human2_agent":"customer",
+                            "shopkeeper2":"shopkeeper2",
+                            "shopkeeper1":"shopkeeper1",
+                            "customer":"customer"
+                          }
+elif groundTruthParticipant == "shopkeeper1":
+    ontologyNameToDbName={"robot_agent":"shopkeeper1",
+                            "human1_agent":"shopkeeper2",
+                            "human2_agent":"customer",
+                            "shopkeeper2":"shopkeeper2",
+                            "shopkeeper1":"shopkeeper1",
+                            "customer":"customer"
+                          }
+
+
 
 
 uniqueIDToIdentifier = {1: "shopkeeper1",
                         2: "customer2",
-                        3: "shopkeeper2"
-                        }
+                        3: "shopkeeper2"}
 
 identifierToDesignator = {"shopkeeper1":"SHOPKEEPER_1",
                           "customer":"CUSTOMER",
-                          "shopkeeper2":"SHOPKEEPER_2"
-                        }
+                          "shopkeeper2":"SHOPKEEPER_2"}
 
 
 def get_state_fieldname(p, fromP):
@@ -173,13 +195,14 @@ for file in mementarOutputFiles:
     trialID = int(file.split("_")[0])
 
     #if trialID != 177:
-    #if trialID != 438:
+    #if trialID != 318:
     #    continue
 
     mementarDataTemp, mementarDataFieldnames = tools.load_csv_data(mementarDir+file, isHeader=True, isJapanese=True)
 
     for line in mementarDataTemp:
-        line["trial"] = trialID
+        line["experiment"] = trialID
+        line["time"] = 100000 * trialID + float(line["time"]) # for some reason there are strange timestamps in this mementar data...
         mementarData.append(line)
     
     # for debugging
@@ -195,12 +218,41 @@ for i in tqdm(range(len(mementarData))):
         if type(mementarData[i][key]) == str:
 
             if mementarData[i][key] != "":
+                for p in ontologyNameToDbName:
+                    mementarData[i][key] = mementarData[i][key].replace(p, ontologyNameToDbName[p])
+                
                 mementarData[i][key] = ast.literal_eval(mementarData[i][key])    
             
             if "_from_" in key:
                 mementarData[i][key] = set(mementarData[i][key])
 
+                factsToRemove = set()
+                # TODO for now remove some facts...
+                for fact in mementarData[i][key]:
+                    if fact[0] == "estimatedNextArea":
+                        factsToRemove.add(fact)
+                    elif fact[0] == "isMoving":
+                        factsToRemove.add(fact)
+                    
+                
+                mementarData[i][key] -= factsToRemove
 
+
+timestampToMementarData = {}
+
+trialsWithMultipleMatchingTimestamps = []
+
+for x in mementarData:
+    if x["time"] not in timestampToMementarData:
+        timestampToMementarData[x["time"]] = []
+    else:
+        #print("WARNING: Multiple matching timestamps!", x["experiment"])
+        trialsWithMultipleMatchingTimestamps.append((x["experiment"], x["time"]))
+    timestampToMementarData[x["time"]].append(x)
+
+print("max timestamp:", max(list(timestampToMementarData.keys())))
+print("min timestamp:", min(list(timestampToMementarData.keys())))
+      
 # find states where they are in more that one room area simultaneously and fix it
 print("fixing multiple locations problem...")
 
@@ -211,7 +263,7 @@ prevTrialID = None
 
 for i in tqdm(range(len(mementarData))):
 
-    currTrialID = mementarData[i]["trial"]
+    currTrialID = mementarData[i]["experiment"]
 
     if currTrialID != prevTrialID:
         prevTrialID = currTrialID
@@ -227,7 +279,7 @@ for i in tqdm(range(len(mementarData))):
             stateKey = get_state_fieldname(p, fromP)
             
             roomLocs = []
-            for fact in  mementarData[i][stateKey]:
+            for fact in mementarData[i][stateKey]:
                 if fact[0] == "isInArea" and fact[1] in roomAreas:
                     roomLocs.append(fact)
             
@@ -254,7 +306,7 @@ for i in tqdm(range(len(mementarData))):
 
                 # go through and remove the old location from any subsequent states with more that two locations 
                 for j in range(i, len(mementarData)):
-                    if mementarData[j]["trial"] != currTrialID:
+                    if mementarData[j]["experiment"] != currTrialID:
                         break
 
                     roomLocs2 = [x for x in mementarData[j][stateKey] if "isInArea" in x]
@@ -273,9 +325,9 @@ for i in tqdm(range(len(mementarData))):
 
 # iterate through the data and identify motion between locations
 def detect_movement(interactionData, participant, groundTruthParticipant, index):
-    trialID = interactionData[index]["trial"]
+    trialID = interactionData[index]["experiment"]
     
-    if interactionData[index-1]["trial"] != trialID:
+    if interactionData[index-1]["experiment"] != trialID:
         return
     
     stateKey = get_state_fieldname(participant, groundTruthParticipant)
@@ -307,7 +359,7 @@ def detect_movement(interactionData, participant, groundTruthParticipant, index)
 
             # go back and fill in the motion target
             for i in reversed(range(index)):
-                if interactionData[i]["trial"] != trialID:
+                if interactionData[i]["experiment"] != trialID:
                     break
 
                 stateToUpdate = None
@@ -348,50 +400,21 @@ for p in participants:
             detect_movement(mementarData, p, fromP, i)
 
 
-# filter out some data to get the "ground truth" data to use as a baseline
-mementarDataGT = copy.deepcopy(mementarData)
-
-# remove perceiving states
-print("removing perceiving states...")
-for i in  tqdm(range(len(mementarDataGT))):
-    for p in participants:
-        for fromP in participants:
-            stateKey = get_state_fieldname(p, fromP)
-
-            factsToRemove = set()
-
-            for fact in mementarDataGT[i][stateKey]:
-                if fact[0] == "isPerceiving":
-                    factsToRemove.add(fact)
-            
-            mementarDataGT[i][stateKey] -= factsToRemove
-
-# remove participant areas
-print("removing participant areas...")
-for i in  tqdm(range(len(mementarDataGT))):
-    for p in participants:
-        for fromP in participants:
-            stateKey = get_state_fieldname(p, fromP)
-
-            factsToRemove = set()
-
-            for fact in mementarDataGT[i][stateKey]:
-                if fact[0] == "isInArea" and fact[1] in participantAreas:
-                    factsToRemove.add(fact)
-            
-            mementarDataGT[i][stateKey] -= factsToRemove
-
 # remove speech after it appears the first time
 print("removing speech after it appears the first time...")
-for i in  tqdm(reversed(range(1, len(mementarDataGT)))):
+for i in  tqdm(reversed(range(1, len(mementarData)))):
     for p in participants:
         for fromP in participants: 
             stateKey = get_state_fieldname(p, fromP)
             factsToRemove = []
 
-            for fact in mementarDataGT[i-1][stateKey]:
+            for fact in mementarData[i-1][stateKey]:
                 if fact[0] == "saidSentence":
-                    mementarDataGT[i][stateKey].discard(fact)
+                    mementarData[i][stateKey].discard(fact)
+
+
+# filter out some data to get the "ground truth" data to use as a baseline
+mementarDataGT = copy.deepcopy(mementarData)
 
 # remove non GT states
 print("removing non GT states...")
@@ -402,10 +425,48 @@ for i in  tqdm(range(len(mementarDataGT))):
                 continue
             mementarDataGT[i].pop(get_state_fieldname(p, fromP))
 
+
+# remove non-room areas
+# because for now we will only treat moving between areas in the room as actions
+print("removing participant areas...")
+for i in  tqdm(range(len(mementarDataGT))):
+    for p in participants:
+        #for fromP in participants:
+        stateKey = get_state_fieldname(p, groundTruthParticipant)
+
+        factsToRemove = set()
+
+        for fact in mementarDataGT[i][stateKey]:
+            if fact[0] == "isInArea" and fact[1] in participantAreas+otherAreas:
+                factsToRemove.add(fact)
+        
+        mementarDataGT[i][stateKey] -= factsToRemove
+
+
+# remove perceiving states
+# for action segmentation - because we don't care about these changes of state to trigger an action or imitate
+print("removing perceiving states...")
+for i in  tqdm(range(len(mementarDataGT))):
+    for p in participants:
+        for fromP in participants:
+            stateKey = get_state_fieldname(p, fromP)
+
+            if stateKey in mementarDataGT[i]:
+                factsToRemove = set()
+
+                for fact in mementarDataGT[i][stateKey]:
+                    if fact[0] == "isPerceiving":
+                        factsToRemove.add(fact)
+                
+                mementarDataGT[i][stateKey] -= factsToRemove
+
+
+
 # remove states that don't change from the previous state
+# (there might be such states because there was a change in one of the X_from_X fields that was removed)
 print("removing states that don't change from the previous state...")
 for i in  tqdm(reversed(range(1, len(mementarDataGT)))):
-    if mementarDataGT[i]["trial"] != mementarDataGT[i-1]["trial"]:
+    if mementarDataGT[i]["experiment"] != mementarDataGT[i-1]["experiment"]:
         continue
 
     same = True
@@ -422,8 +483,9 @@ for i in  tqdm(reversed(range(1, len(mementarDataGT)))):
 # remove arrival states - where the only difference from the previous state is that moveFromTo(X,Y) changes to isInArea(Y)
 # note, this must be run after all states that don't change from the previous state are removed
 print("removing arrival states...")
+
 for i in tqdm(reversed(range(1, len(mementarDataGT)))):
-    if mementarDataGT[i]["trial"] != mementarDataGT[i-1]["trial"]:
+    if mementarDataGT[i]["experiment"] != mementarDataGT[i-1]["experiment"]:
         continue
 
     arrivalState = True
@@ -464,7 +526,7 @@ for i in tqdm(reversed(range(1, len(mementarDataGT)))):
 # must be run after removing duplicate states and removing arrival states
 print("removing states where the only difference with the previous is that the saidSentence is removed...")
 for i in tqdm(reversed(range(1, len(mementarDataGT)))):
-    if mementarDataGT[i]["trial"] != mementarDataGT[i-1]["trial"]:
+    if mementarDataGT[i]["experiment"] != mementarDataGT[i-1]["experiment"]:
         continue
 
     speechDisappearsState = True
@@ -491,13 +553,31 @@ for i in tqdm(reversed(range(1, len(mementarDataGT)))):
         mementarDataGT.pop(i)
 
 
+# if using full input, add back some of the information that was previously removed
 
+if fullInput:
+    print("adding back some information for full input...")
+    for i in tqdm(reversed(range(len(mementarDataGT)))):
+        additionalInfo = timestampToMementarData[mementarDataGT[i]["time"]][0]
+
+        # add back non GT states, participant areas, isPerceiving states
+        for p in participants:
+            for fromP in participants:
+                stateKey = get_state_fieldname(p, fromP)
+
+                if stateKey not in mementarDataGT[i]:
+                    mementarDataGT[i][stateKey] = additionalInfo[stateKey]
+                    # TODO anything to remove from the original here?
+
+                else:
+                    temp = copy.deepcopy(additionalInfo[stateKey])
+                    
+                                        
+                    mementarDataGT[i][stateKey].update(additionalInfo[stateKey])
 
 
 print("len original:", len(mementarData))
 print("len GT:", len(mementarDataGT))
-
-
 
 
 #
@@ -507,7 +587,7 @@ print("len GT:", len(mementarDataGT))
 # function for finding "actions" - i.e. action segmentation
 # when certain state changes happen, treat it as an action
 def detect_actions(interactionData, participant, groundTruthParticipant, index):
-    if index == 0 or (interactionData[index]["trial"] != interactionData[index-1]["trial"]):
+    if index == 0 or (interactionData[index]["experiment"] != interactionData[index-1]["experiment"]):
         return []
     
     stateKey = get_state_fieldname(participant, groundTruthParticipant)
@@ -610,6 +690,7 @@ for i in tqdm(range(0, len(mementarDataGT))):
     for p in participants:
         mementarDataGT[i][get_action_fieldname(p)] = detect_actions(mementarDataGT, p, groundTruthParticipant, i)
 
+
 mementarDataFieldnames += [get_action_fieldname(p) for p in participants]
 mementarDataGTFieldnames = copy.deepcopy(mementarDataFieldnames)
 
@@ -617,6 +698,22 @@ for p in participants:
     for fromP in participants:
         if fromP != groundTruthParticipant:
             mementarDataGTFieldnames.remove(get_state_fieldname(p, fromP))
+
+# removed states where there hasn't been a GT action (i.e. we should only query the NN for a response when a GT action has occurred)
+for i in tqdm(reversed(range(1, len(mementarDataGT)))):
+    if mementarDataGT[i]["experiment"] != mementarDataGT[i-1]["experiment"]:
+        continue
+    
+    actionOccurred = False
+
+    for p in participants:
+        if len(mementarDataGT[i][get_action_fieldname(p)]) > 0:
+            actionOccurred = True
+            break
+    
+    if not actionOccurred:
+        mementarDataGT.pop(i)
+
 
 
 #
@@ -705,7 +802,7 @@ def vectorize_and_save(mementarData, fileDescriptor):
         # mementarData["CUSTOMER_BUY"] = 
         # mementarData["SHOPKEEPER2_TYPE"] = 
         # mementarData["NOTES"] = 
-        mementarData[i].update(expIDToCondition[mementarData[i]["trial"]])
+        mementarData[i].update(expIDToCondition[mementarData[i]["experiment"]])
         
         # Formerly, this was for the person who acted. But now... of who? From who's perspective?
         # mementarData["unique_id"] = 
@@ -732,6 +829,14 @@ def vectorize_and_save(mementarData, fileDescriptor):
                 mementarData[i][stateFieldname+"_motionOrigin_name"] = "None"
                 mementarData[i][stateFieldname+"_motionTarget_name"] = "None"
 
+                if fullInput:
+                    mementarData[i][stateFieldname+"_withParticipants"] = []
+                    mementarData[i][stateFieldname+"_withParticipants_name"] = []
+
+                    mementarData[i][stateFieldname+"_isPerceiving"] = []
+                    mementarData[i][stateFieldname+"_isPerceiving_name"] = []
+
+
                 isInAreaCount = 0
 
                 for fact in state:
@@ -743,6 +848,12 @@ def vectorize_and_save(mementarData, fileDescriptor):
                     if fact[0] == "moveFromTo":
                         mementarData[i][stateFieldname+"_motionOrigin_name"] = fact[1]
                         mementarData[i][stateFieldname+"_motionTarget_name"] = fact[2]
+                    if fullInput and fact[0] == "isInArea" and fact[1] in participantAreas:
+                        mementarData[i][stateFieldname+"_withParticipants"].append(participantAreas.index(fact[1]))
+                        mementarData[i][stateFieldname+"_withParticipants_name"].append(fact[1])
+                    if fullInput and fact[0] == "isPerceiving":
+                        mementarData[i][stateFieldname+"_isPerceiving"].append(participants.index(fact[1]))
+                        mementarData[i][stateFieldname+"_isPerceiving_name"].append(fact[1])
                 
                 if isInAreaCount > 1:
                     isInMultipleAreasCount += 1
@@ -792,17 +903,13 @@ def vectorize_and_save(mementarData, fileDescriptor):
         # mementarData["shopkeeper2_spatialFormation"] = 
         # mementarData["shopkeeper2_stateTarget"] =  
     
-    # save
-    fieldnamesNotToDuplicate = ["TRIAL", "CUSTOMER_ID", "SHOPKEEPER1_ID", "SHOPKEEPER2_ID", "CUSTOMER_TYPE", "CUSTOMER_BUY", "SHOPKEEPER2_TYPE", "NOTES"]
-    fieldnames = fieldnamesNotToDuplicate + ["SOMEONE_ACTS"] + [fn for fn in mementarData[0].keys() if fn not in fieldnamesNotToDuplicate]
 
+    # add a field so we can see when someone acts
     for i in range(len(mementarData)):
         mementarData[i]["SOMEONE_ACTS"] = 0
         for p in participants:
             if len(mementarData[i][get_action_fieldname(p)]) > 0:
                 mementarData[i]["SOMEONE_ACTS"] = 1
-
-    tools.save_interaction_data(mementarData, sessionDir+"{}.csv".format(fileDescriptor), fieldnames)
 
 
     #
@@ -823,6 +930,7 @@ def vectorize_and_save(mementarData, fileDescriptor):
     outputSpeechClusterIsJunk_shkp2 = []
     
     outputDidActionBits = [] # shkp1, cust, shkp2
+    inputDidActionBits = []
 
     thisExpStartIndex = 0
     thisExp = mementarData[0]["TRIAL"]
@@ -888,6 +996,11 @@ def vectorize_and_save(mementarData, fileDescriptor):
                                          nextAction["CUSTOMER_DID_ACTION"],
                                          nextAction["SHOPKEEPER_2_DID_ACTION"]])
         
+        
+        inputDidActionBits.append([currAction["SHOPKEEPER_1_DID_ACTION"],
+                                         currAction["CUSTOMER_DID_ACTION"],
+                                         currAction["SHOPKEEPER_2_DID_ACTION"]])
+
         #
         # compute some statistics
         #
@@ -964,8 +1077,12 @@ def vectorize_and_save(mementarData, fileDescriptor):
     print("Num instances with multiple utterances:", areMultipleUtterancesCount)
     
 
-    with open(missingUtteranceFilename, "r") as f:
-        missingUttCount = len(f.readlines())
+    try:
+        with open(missingUtteranceFilename, "r") as f:
+            missingUttCount = len(f.readlines())
+    except FileNotFoundError:
+        missingUttCount = 0
+    
     print("Num utts missing from speech clusters:", missingUttCount)
 
     
@@ -996,7 +1113,7 @@ def vectorize_and_save(mementarData, fileDescriptor):
                 # TODO it would be better to mark whose state changes (to include things like arival to a location), not just who did an action
                 # TODO this might also need to be done separately for each fromX
                 
-                didActionVec = np.asarray(outputDidActionBits[i])
+                didActionVec = np.asarray(inputDidActionBits[i])
                 
                 inputVecTemp = np.concatenate([inputVecTemp, didActionVec])
 
@@ -1015,8 +1132,23 @@ def vectorize_and_save(mementarData, fileDescriptor):
                             motTar[int(inputStep["{}_motionOrigin".format(stateKey)])] = 1
 
                             inputVecTemp = np.concatenate([inputVecTemp, currLoc, motOri, motTar])
-                
 
+
+                            if fullInput:
+                                withParticipants = np.zeros(len(participantAreas))
+                                withParticipants[inputStep[stateFieldname+"_withParticipants"]] = 1
+
+                                isPerceiving = np.zeros(len(participants))
+                                isPerceiving[inputStep[stateFieldname+"_isPerceiving"]] = 1
+
+                                inputVecTemp = np.concatenate([inputVecTemp, withParticipants, isPerceiving])
+                            
+                        elif fullInput:
+                            # if the state key is missing, add a zero vector
+                            zeroVec = np.zeros(1)
+                            pass
+                
+                # TODO - separate speech for each X_from_X
                 shkp1Speech = inputStep["SHOPKEEPER_1_SPEECH"]
                 if shkp1Speech != "":
                     shkp1UttVec = uttToVec[shkp1Speech]
@@ -1077,8 +1209,84 @@ def vectorize_and_save(mementarData, fileDescriptor):
     np.save(sessionDir+"/inputVectors", inputVectors)
     
 
-vectorize_and_save(mementarDataGT, "mementarDataGT")
+    #
+    # prepare and save the human readable inputs and outputs
+    #
 
+    # generate fieldnames
+    inputFieldnames = list(inputs[inputLen][0].keys()) # the first one without None
+    inputFieldnames.pop(inputFieldnames.index("experiment")) # no need to put this info for each input step
+    inputFieldnamesAllSteps = []
+    fieldnamesNotToDuplicate = ["TRIAL", "CUSTOMER_ID", "SHOPKEEPER1_ID", "SHOPKEEPER2_ID", "CUSTOMER_TYPE", "CUSTOMER_BUY", "SHOPKEEPER2_TYPE", "NOTES"]
+
+    #fieldnames = fieldnamesNotToDuplicate + ["SOMEONE_ACTS"] + [fn for fn in mementarData[0].keys() if fn not in fieldnamesNotToDuplicate]
+
+
+    for i in range(inputLen):
+        for fieldname in inputFieldnames:
+            if fieldname not in fieldnamesNotToDuplicate:
+                inputFieldnamesAllSteps.append("{}_{}".format(i, fieldname))
+
+    outputFieldnames = list(outputs[0].keys())
+    outputFieldnames.pop(outputFieldnames.index("experiment"))
+    outputFieldnamesForHumanReadable = ["y_{}".format(fieldname) for fieldname in outputFieldnames if fieldname not in fieldnamesNotToDuplicate]
+
+    inputOutputFieldnames = fieldnamesNotToDuplicate + inputFieldnamesAllSteps + outputFieldnamesForHumanReadable
+
+
+
+    # generate the rows to be saved to csv
+    inputsAndOutputsForCsv = []
+
+    for i in range(len(inputs)):
+        row = OrderedDict()
+
+        for fieldname in fieldnamesNotToDuplicate:
+            row[fieldname] = outputs[i][fieldname]
+
+        # input
+        input = inputs[i]
+        for j in range(len(input)):
+            if input[j] == None:
+                for fieldname in inputFieldnames:
+                    if fieldname not in fieldnamesNotToDuplicate:
+                        row["{}_{}".format(j, fieldname)] = ""
+            else:
+                for fieldname in inputFieldnames:
+                    if fieldname not in fieldnamesNotToDuplicate:
+                        row["{}_{}".format(j, fieldname)] = input[j][fieldname]
+                
+        
+        # output
+        for fieldname in outputFieldnames:
+            if fieldname not in fieldnamesNotToDuplicate:
+                try:
+                    row["y_{}".format(fieldname)] = outputs[i][fieldname]
+                except:
+                    row["y_{}".format(fieldname)] = ""
+            
+
+        inputsAndOutputsForCsv.append(row)
+
+
+
+
+    #for i in range(len(inputsAndOutputsForCsv)):
+    #    inputsAndOutputsForCsv[i].update(expIDToCondition[int(interactionData[i]["experiment"])])
+
+    #inputOutputFieldnames = [] + inputOutputFieldnames
+
+
+    tools.save_interaction_data(inputsAndOutputsForCsv, sessionDir+"humanReadableInputsOutputs.csv", inputOutputFieldnames)
+
+
+
+
+
+
+
+
+vectorize_and_save(mementarDataGT, "mementarDataGT")
 
 print("Done.")
 

@@ -4,13 +4,15 @@ import numpy as np
 import pickle
 from collections import OrderedDict
 import pymysql
+import copy
 
 import tools
 import utterancevectorizer2
 
 
 trainUttVectorizer = False
-outputBothShokeeperActions = True
+useOpenAIEmbeddings = True
+shkpUniqueIDs = [1, 3]
 
 interactionDataFilename = "20230807-141847_processForSpeechClustering/20230623_SSC_3_trueMotionTargets_3_speechMotionCombined.csv"
 speechClustersFilename = "20230731-113400_speechClustering/all_shopkeeper- speech_clusters - levenshtein normalized medoid.csv"
@@ -25,6 +27,10 @@ uniqueIDToIdentifier = {1: "shopkeeper1",
                         2: "customer2",
                         3: "shopkeeper2"
                         }
+
+identifierToDesignator = {"shopkeeper1":"SHOPKEEPER_1",
+                          "customer":"CUSTOMER",
+                          "shopkeeper2":"SHOPKEEPER_2"}
 
 
 #
@@ -94,6 +100,27 @@ custStopLocClustIDToName[0] = "None"
 
 
 #
+# load the openAI embeddings
+#
+if useOpenAIEmbeddings:
+    uttToVec = {}
+
+    customerUttVecDir = tools.dataDir+"20240111-141832_utteranceVectorizer/"
+    shopkeeperUttVecDir = tools.dataDir+"20231220-111317_utteranceVectorizer/"
+    allParticipantsUttVecDir = tools.dataDir+"20240116-190033_utteranceVectorizer/"
+
+
+    allParticipantsUttVecs = np.load(allParticipantsUttVecDir+"all_participants_unique_utterances_openai_embeddings.npy")
+    with open(allParticipantsUttVecDir+"all_participants_unique_utterances.txt", "r") as f:
+        allParticipantsUtts = f.read().splitlines()
+    for i in range(len(allParticipantsUtts)):
+        uttToVec[allParticipantsUtts[i]] = allParticipantsUttVecs[i]
+
+
+    uttVecDim = allParticipantsUttVecs.shape[1]
+
+
+#
 # add human readable spatial info to the interaction data
 #
 for i in range(len(interactionData)):
@@ -125,10 +152,6 @@ for i in reversed(range(len(interactionData))):
         removedNullActions.append(interactionData.pop(i))
 
 
-tools.save_interaction_data(interactionData, sessionDir+"20230623_SSC_3_trueMotionTargets_3_speechMotionCombined_humanReadable.csv", interactionData[0].keys() )
-
-
-
 #
 # find the action clusters (unique combinations of shopkeeper locations and speech clusters)
 # and add the speech and action cluster data to the action sequence data
@@ -138,19 +161,25 @@ actionKeyToActionID = {}
 
 newJunkUtts = []
 
-if outputBothShokeeperActions:
-    uniqueIDsToGetActionsFor = [1, 3]
-else:
-    uniqueIDsToGetActionsFor = [3]
 
 for row in interactionData:
     uniqueID = int(row["unique_id"])
-        
-    # junior shopkeeper
-    if uniqueID in uniqueIDsToGetActionsFor: 
-        speech = row["participant_speech"]
+    speech = row["participant_speech"]
+    location = int(row["{}_currentLocation".format(uniqueIDToIdentifier[uniqueID])])
+    motionTarget = int(row["{}_motionTarget".format(uniqueIDToIdentifier[uniqueID])])
+
+    if location != 0:
+        spatialInfo = location
+    elif motionTarget != 0:
+        spatialInfo = motionTarget
+    else:
+        spatialInfo = 0
+        #if uniqueID != 2:
+        #    print("WARNING: Invalid spatial infor for row: {}".format(row))
 
 
+    # get the ID for the shopkeeper actions
+    if uniqueID in shkpUniqueIDs:
         if speech in uttToSpeechClustID:
             speechClustID = uttToSpeechClustID[speech]
         else:
@@ -158,17 +187,6 @@ for row in interactionData:
             speechClustID = mainJunkClusterID
             newJunkUtts.append(speech)
         
-        location = int(row["{}_currentLocation".format(uniqueIDToIdentifier[uniqueID])])
-        motionTarget = int(row["{}_motionTarget".format(uniqueIDToIdentifier[uniqueID])])
-        
-        if location != 0:
-            spatialInfo = location
-        elif motionTarget != 0:
-            spatialInfo = motionTarget
-        else:
-            spatialInfo = 0
-            print("WARNING: Invalid spatial infor for row: {}".format(row))
-
         action = (speechClustID, spatialInfo)
         actionKey = "-".join([str(x) for x in action])
 
@@ -179,22 +197,71 @@ for row in interactionData:
         
         actionID = actionKeyToActionID[actionKey]
         
-        row["SHOPKEEPER_ACTION_CLUSTER"] = actionID
-        row["SHOPKEEPER_SPATIAL_INFO"] = spatialInfo
-        row["SHOPKEEPER_SPATIAL_INFO_NAME"] = shkpStopLocClustIDToName[spatialInfo]
-        row["SHOPKEEPER_SPEECH_CLUSTER"] = speechClustID
-        row["SHOPKEEPER_REPRESENTATIVE_UTTERANCE"] = speechClustIDToRepUtt[speechClustID]
-        row["SHOPKEEPER_SPEECH_CLUSTER_IS_JUNK"] = speechClustIDIsJunk[speechClustID]
-        row["SHOPKEEPER_UNIQUE_ID"] = uniqueID
+
+    # default values
+    # SHOPKEEPER 1 action
+    row["SHOPKEEPER_1_SPATIAL_INFO"] = -1
+    row["SHOPKEEPER_1_SPATIAL_INFO_NAME"] = "None"
+    row["SHOPKEEPER_1_SPEECH"] = ""
+    row["SHOPKEEPER_1_DID_ACTION"] = 0
+    
+    row["SHOPKEEPER_1_ACTION_CLUSTER"] = -1
+    row["SHOPKEEPER_1_SPEECH_CLUSTER"] = -1
+    row["SHOPKEEPER_1_REPRESENTATIVE_UTTERANCE"] = ""
+    row["SHOPKEEPER_1_SPEECH_CLUSTER_IS_JUNK"] = 0
+    
+    # SHOPKEEPER 2 action
+    row["SHOPKEEPER_2_SPATIAL_INFO"] = -1
+    row["SHOPKEEPER_2_SPATIAL_INFO_NAME"] = "None"
+    row["SHOPKEEPER_2_SPEECH"] = ""
+    row["SHOPKEEPER_2_DID_ACTION"] = 0
+    
+    row["SHOPKEEPER_2_ACTION_CLUSTER"] = -1
+    row["SHOPKEEPER_2_SPEECH_CLUSTER"] = -1
+    row["SHOPKEEPER_2_REPRESENTATIVE_UTTERANCE"] = ""
+    row["SHOPKEEPER_2_SPEECH_CLUSTER_IS_JUNK"] = 0
+
+    # CUSTOMER action
+    row["CUSTOMER_SPATIAL_INFO"] = -1
+    row["CUSTOMER_SPATIAL_INFO_NAME"] = "None"
+    row["CUSTOMER_SPEECH"] = ""
+    row["CUSTOMER_DID_ACTION"] = 0
+
+
+    if uniqueID == 1:
+        # SHOPKEEPER 1 action
+        row["SHOPKEEPER_1_SPATIAL_INFO"] = spatialInfo
+        row["SHOPKEEPER_1_SPATIAL_INFO_NAME"] = shkpStopLocClustIDToName[spatialInfo]
+        row["SHOPKEEPER_1_SPEECH"] = speech
+        row["SHOPKEEPER_1_DID_ACTION"] = 1
+
+        row["SHOPKEEPER_1_ACTION_CLUSTER"] = actionID            
+        row["SHOPKEEPER_1_SPEECH_CLUSTER"] = speechClustID
+        row["SHOPKEEPER_1_REPRESENTATIVE_UTTERANCE"] = speechClustIDToRepUtt[speechClustID]
+        row["SHOPKEEPER_1_SPEECH_CLUSTER_IS_JUNK"] = speechClustIDIsJunk[speechClustID]
+    
+    elif uniqueID == 3:
+        # SHOPKEEPER 2 action
+        row["SHOPKEEPER_2_SPATIAL_INFO"] = spatialInfo
+        row["SHOPKEEPER_2_SPATIAL_INFO_NAME"] = shkpStopLocClustIDToName[spatialInfo]
+        row["SHOPKEEPER_2_SPEECH"] = speech
+        row["SHOPKEEPER_2_DID_ACTION"] = 1
+
+        row["SHOPKEEPER_2_ACTION_CLUSTER"] = actionID
+        row["SHOPKEEPER_2_SPEECH_CLUSTER"] = speechClustID
+        row["SHOPKEEPER_2_REPRESENTATIVE_UTTERANCE"] = speechClustIDToRepUtt[speechClustID]
+        row["SHOPKEEPER_2_SPEECH_CLUSTER_IS_JUNK"] = speechClustIDIsJunk[speechClustID]
     
     else:
-        row["SHOPKEEPER_ACTION_CLUSTER"] = -1
-        row["SHOPKEEPER_SPATIAL_INFO"] = -1
-        row["SHOPKEEPER_SPATIAL_INFO_NAME"] = "None"
-        row["SHOPKEEPER_SPEECH_CLUSTER"] = -1
-        row["SHOPKEEPER_REPRESENTATIVE_UTTERANCE"] = ""
-        row["SHOPKEEPER_SPEECH_CLUSTER_IS_JUNK"] = 0
-        row["SHOPKEEPER_UNIQUE_ID"] = -1
+        # CUSTOMER action
+        row["CUSTOMER_SPATIAL_INFO"] = spatialInfo
+        row["CUSTOMER_SPATIAL_INFO_NAME"] = custStopLocClustIDToName[spatialInfo]
+        row["CUSTOMER_SPEECH"] = speech
+        row["CUSTOMER_DID_ACTION"] = 1
+
+
+tools.save_interaction_data(interactionData, sessionDir+"20230623_SSC_3_trueMotionTargets_3_speechMotionCombined_humanReadable.csv", interactionData[0].keys() )
+
 
 
 #
@@ -202,15 +269,21 @@ for row in interactionData:
 # add NULL shopkeeper 2 actions in between actions of other participants (to teach shopkeeper not to respond to them) (is this good?...)
 #
 
-inputLen = 1
+inputLen = 3
 
 inputs = []
 outputs = []
-outputActionIDs = []
-outputSpeechClusterIDs = []
-outputSpatialInfo = []
-toIgnore = []
-isHidToImitate = []
+
+outputActionIDs_shkp1 = []
+outputActionIDs_shkp2 = []
+outputSpeechClusterIDs_shkp1 = []
+outputSpeechClusterIDs_shkp2 = []
+outputSpatialInfo_shkp1 = []
+outputSpatialInfo_shkp2 = []
+outputSpeechClusterIsJunk_shkp1 = []
+outputSpeechClusterIsJunk_shkp2 = []
+
+outputDidActionBits = []
 
 
 numActionsPerParticipant = {1:0, 2:0, 3:0}
@@ -219,11 +292,6 @@ actionHidSequenceCounts = {"total":0}
 countOverThreshold = {"total":0}
 timeDeltas = {"total":[]}
 
-if outputBothShokeeperActions:
-    hidToImitate = [1, 3] # both shopkeepers
-else:
-    hidToImitate = [3] # junior shopkeeper
-
 
 threshold = 6.0
 
@@ -231,14 +299,31 @@ threshold = 6.0
 thisExpStartIndex = 0
 thisExp = interactionData[0]["experiment"]
 
-for i in range(len(interactionData)-1):
-    currAction = interactionData[i]
-    nextAction = interactionData[i+1]
+lastAction = False
+veryLastAction = False
 
-    if thisExp != nextAction["experiment"]:
+for i in range(len(interactionData)):
+    currAction = interactionData[i]
+
+    try:
+        nextAction = interactionData[i+1]
+    except:
+        veryLastAction = True
+
+    if veryLastAction or thisExp != nextAction["experiment"]:
         thisExpStartIndex = i + 1
         thisExp = nextAction["experiment"]
-        continue
+        
+        # just have a null action for the last input step
+        nextAction = {}
+        nextAction = copy.deepcopy(currAction)
+        nextAction["SHOPKEEPER_1_DID_ACTION"] = 0
+        nextAction["CUSTOMER_DID_ACTION"] = 0
+        nextAction["SHOPKEEPER_2_DID_ACTION"] = 0
+
+        lastAction = True
+    else:
+        lastAction = False
 
 
     # TODO: somehow treat the "first appearance" actions specially
@@ -253,25 +338,40 @@ for i in range(len(interactionData)-1):
     inputs.append(inputTemp)
     outputs.append(nextAction)
 
-    isHidToImitateTemp = int(int(nextAction["unique_id"]) in hidToImitate)
-    isHidToImitate.append(isHidToImitateTemp)
-
-    if isHidToImitateTemp:
-        outputActionIDs.append(nextAction["SHOPKEEPER_ACTION_CLUSTER"])
-        outputSpeechClusterIDs.append(nextAction["SHOPKEEPER_SPEECH_CLUSTER"])
-        outputSpatialInfo.append(nextAction["SHOPKEEPER_SPATIAL_INFO"])
-        toIgnore.append(nextAction["SHOPKEEPER_SPEECH_CLUSTER_IS_JUNK"])
-
+    if nextAction["SHOPKEEPER_1_DID_ACTION"] == 1:
+        outputActionIDs_shkp1.append(nextAction["SHOPKEEPER_1_ACTION_CLUSTER"])
+        outputSpeechClusterIDs_shkp1.append(nextAction["SHOPKEEPER_1_SPEECH_CLUSTER"])
+        outputSpatialInfo_shkp1.append(nextAction["SHOPKEEPER_1_SPATIAL_INFO"])
+        outputSpeechClusterIsJunk_shkp1.append(nextAction["SHOPKEEPER_1_SPEECH_CLUSTER_IS_JUNK"])
     else:
-        outputActionIDs.append(-1)
-        outputSpeechClusterIDs.append(-1)
-        outputSpatialInfo.append(-1)
-        toIgnore.append(-1)
+        outputActionIDs_shkp1.append(-1)
+        outputSpeechClusterIDs_shkp1.append(-1)
+        outputSpatialInfo_shkp1.append(-1)
+        outputSpeechClusterIsJunk_shkp1.append(-1)
+            
+    if nextAction["SHOPKEEPER_2_DID_ACTION"] == 1:
+        outputActionIDs_shkp2.append(nextAction["SHOPKEEPER_2_ACTION_CLUSTER"])
+        outputSpeechClusterIDs_shkp2.append(nextAction["SHOPKEEPER_2_SPEECH_CLUSTER"])
+        outputSpatialInfo_shkp2.append(nextAction["SHOPKEEPER_2_SPATIAL_INFO"])
+        outputSpeechClusterIsJunk_shkp2.append(nextAction["SHOPKEEPER_2_SPEECH_CLUSTER_IS_JUNK"])
+    else:
+        outputActionIDs_shkp2.append(-1)
+        outputSpeechClusterIDs_shkp2.append(-1)
+        outputSpatialInfo_shkp2.append(-1)
+        outputSpeechClusterIsJunk_shkp2.append(-1)
     
+    outputDidActionBits.append([nextAction["SHOPKEEPER_1_DID_ACTION"],
+                                nextAction["CUSTOMER_DID_ACTION"],
+                                nextAction["SHOPKEEPER_2_DID_ACTION"]])
+    
+
 
     #
     # compute some statistics
     #
+    if lastAction:
+        continue
+
     t = float(currAction["time"])
     nextT = float(nextAction["time"])
     timeDelta = nextT - t
@@ -289,10 +389,10 @@ for i in range(len(interactionData)-1):
         actionHidSequenceCounts[hidSeq] = 0
     actionHidSequenceCounts[hidSeq] += 1
 
-    hidSeq = "{}->{}".format(hid in hidToImitate, nextHid in hidToImitate) # TODO this isn't really a meaningful metric anymore... (counts when a shopkeeper action follows another shopkeeper action)
-    if hidSeq not in actionHidSequenceCounts:
-        actionHidSequenceCounts[hidSeq] = 0
-    actionHidSequenceCounts[hidSeq] += 1
+    #hidSeq = "{}->{}".format(hid in hidToImitate, nextHid in hidToImitate) # TODO this isn't really a meaningful metric anymore... (counts when a shopkeeper action follows another shopkeeper action)
+    #if hidSeq not in actionHidSequenceCounts:
+    #    actionHidSequenceCounts[hidSeq] = 0
+    #actionHidSequenceCounts[hidSeq] += 1
 
     actionHidSequenceCounts["total"] += 1
 
@@ -323,16 +423,16 @@ for i in range(1,4):
         hidSeq = "{}->{}".format(i, j)
         print("Action HID sequence {}: {} instances".format(hidSeq, actionHidSequenceCounts[hidSeq]))
 
-for i in [True, False]:
-    for j in [True, False]:
-        hidSeq = "{}->{}".format(i, j)
+# for i in [True, False]:
+#     for j in [True, False]:
+#         hidSeq = "{}->{}".format(i, j)
         
-        print("Action HID sequence {}: {} instances, {} timeouts, {} delta mean, {} std.".format(hidSeq, 
-                                                                                                 actionHidSequenceCounts[hidSeq], 
-                                                                                                 countOverThreshold[hidSeq],
-                                                                                                 np.mean(timeDeltas[hidSeq]), 
-                                                                                                 np.std(timeDeltas[hidSeq])
-                                                                                                 ))
+#         print("Action HID sequence {}: {} instances, {} timeouts, {} delta mean, {} std.".format(hidSeq, 
+#                                                                                                  actionHidSequenceCounts[hidSeq], 
+#                                                                                                  countOverThreshold[hidSeq],
+#                                                                                                  np.mean(timeDeltas[hidSeq]), 
+#                                                                                                  np.std(timeDeltas[hidSeq])
+#                                                                                                  ))
 hidSeq = "total"
 print("Action HID sequence {}: {} instances, {} timeouts, {} delta mean, {} std.".format(hidSeq, 
                                                                                                  actionHidSequenceCounts[hidSeq], 
@@ -345,13 +445,15 @@ print("Action HID sequence {}: {} instances, {} timeouts, {} delta mean, {} std.
 #
 # vectorize the inputs, outputs, etc.
 #
-custUttVectorizer = None
-shkpUttVectorizer = None
 
-custUttToVector = None
-shkpUttToVector = None
 
-if trainUttVectorizer:
+if trainUttVectorizer and not useOpenAIEmbeddings:
+    custUttVectorizer = None
+    shkpUttVectorizer = None
+
+    custUttToVector = None
+    shkpUttToVector = None
+    
     #
     # train the speech vectorizers
     #
@@ -457,7 +559,7 @@ if trainUttVectorizer:
     for i in range(len(shopkeeperUtterances)):
         shkpUttToVector[shopkeeperUtterances[i]] = shkpUttVectors[i,:] 
 
-else:
+elif not trainUttVectorizer and not useOpenAIEmbeddings:
     #
     # load the speech vectorizers
     #
@@ -480,33 +582,37 @@ else:
 
 
 
-print("pickling the customer utterance vectorizer...")
+if not useOpenAIEmbeddings:
+    print("pickling the customer utterance vectorizer...")
 
-custUttVectorizer.deinitializeMeCab() # Necessary because MeCab cannot get pickled. This will automatically get reinitialized when we lemmatize an utterance
-with open(sessionDir+"customerUtteranceVectorizer.pkl", "wb") as f:
-    f.write(pickle.dumps(custUttVectorizer))
+    custUttVectorizer.deinitializeMeCab() # Necessary because MeCab cannot get pickled. This will automatically get reinitialized when we lemmatize an utterance
+    with open(sessionDir+"customerUtteranceVectorizer.pkl", "wb") as f:
+        f.write(pickle.dumps(custUttVectorizer))
 
-with open(sessionDir+"custUttToVector.pkl", "wb") as f:
-    f.write(pickle.dumps(custUttToVector))
+    with open(sessionDir+"custUttToVector.pkl", "wb") as f:
+        f.write(pickle.dumps(custUttToVector))
 
 
-print("pickling the shopkeeper utterance vectorizer...")
+    print("pickling the shopkeeper utterance vectorizer...")
 
-shkpUttVectorizer.deinitializeMeCab() # Necessary because MeCab cannot get pickled. This will automatically get reinitialized when we lemmatize an utterance
-with open(sessionDir+"shopkeeperUtteranceVectorizer.pkl", "wb") as f:
-    f.write(pickle.dumps(shkpUttVectorizer))
+    shkpUttVectorizer.deinitializeMeCab() # Necessary because MeCab cannot get pickled. This will automatically get reinitialized when we lemmatize an utterance
+    with open(sessionDir+"shopkeeperUtteranceVectorizer.pkl", "wb") as f:
+        f.write(pickle.dumps(shkpUttVectorizer))
 
-with open(sessionDir+"shkpUttToVector.pkl", "wb") as f:
-    f.write(pickle.dumps(shkpUttToVector))
+    with open(sessionDir+"shkpUttToVector.pkl", "wb") as f:
+        f.write(pickle.dumps(shkpUttToVector))
 
 
 # add 0 vec for no speech
-custUttVecShape = list(custUttToVector.values())[0].shape
-custUttToVector[""] = np.zeros(custUttVecShape)
+if not useOpenAIEmbeddings:
+    custUttVecShape = list(custUttToVector.values())[0].shape
+    shkpUttVecShape = list(shkpUttToVector.values())[0].shape
+    custUttToVector[""] = np.zeros(custUttVecShape)
+    shkpUttToVector[""] = np.zeros(shkpUttVecShape)
 
-shkpUttVecShape = list(shkpUttToVector.values())[0].shape
-shkpUttToVector[""] = np.zeros(shkpUttVecShape)
-
+else:
+    uttToVec[""] = np.zeros(uttVecDim)
+    
 
 #
 # create the input vectors
@@ -515,7 +621,10 @@ print("Creating the input vectors...")
 
 # who acted bit + customer at from to + shopkeeper at from to (two shopkeepers)
 inputVecNonSpeechLen = 3 + (len(custStopLocClustIDToName) + 1) * 3 + (len(shkpStopLocClustIDToName) + 1) * 6
-inputVecSpeechLen = custUttVecShape[0] + shkpUttVecShape[0]
+if not useOpenAIEmbeddings:
+    inputVecSpeechLen = custUttVecShape[0] + shkpUttVecShape[0]
+else:
+    inputVecSpeechLen = uttVecDim # because all participant vectorizations are the same dimension and there is only one participant acting at a time, we only need one slot for speech
 
 # save speech and non speech separately because speech requires floats, non speech can use ints to save space
 inputVectorsNonSpeech = []
@@ -572,22 +681,27 @@ for input in inputs:
             shkp2MotTar[int(inputStep["shopkeeper2_motionOrigin"])] = 1
 
 
-            # customer utterance vector
-            if hid == 2:
-                custUttVec = custUttToVector[speech]
-            else:
-                custUttVec = custUttToVector[""]
+            if not useOpenAIEmbeddings:
+                # customer utterance vector
+                if hid == 2:
+                    custUttVec = custUttToVector[speech]
+                else:
+                    custUttVec = custUttToVector[""]
 
 
-            # shopkeeper utterance vector
-            if hid == 1 or hid == 3:
-                shkpUttVec = shkpUttToVector[speech]
-            else:
-                shkpUttVec = shkpUttToVector[""]
+                # shopkeeper utterance vector
+                if hid == 1 or hid == 3:
+                    shkpUttVec = shkpUttToVector[speech]
+                else:
+                    shkpUttVec = shkpUttToVector[""]
+
+                inputVecSpeechTemp.append(np.concatenate([custUttVec, shkpUttVec]))
             
+            else:
+                inputVecSpeechTemp.append(uttToVec[speech])
+
 
             inputVecNonSpeechTemp.append(np.concatenate([didActionVec, custCurrLoc, custMotOri, custMotTar, shkp1CurrLoc, shkp1MotOri, shkp1MotTar, shkp2CurrLoc, shkp2MotOri, shkp2MotTar]))
-            inputVecSpeechTemp.append(np.concatenate([custUttVec, shkpUttVec]))
             inputVecCombinedTemp.append(np.concatenate([inputVecNonSpeechTemp[-1], inputVecSpeechTemp[-1]]))
 
     
@@ -603,17 +717,17 @@ for input in inputs:
 #
 # save the vectors
 #
-outputActionIDs = np.asarray(outputActionIDs, dtype=np.int16)
-outputSpeechClusterIDs = np.asarray(outputSpeechClusterIDs, dtype=np.int16)
-outputSpatialInfo = np.asarray(outputSpatialInfo, dtype=np.int16)
-toIgnore = np.asarray(toIgnore, dtype=np.int16)
-isHidToImitate = np.asarray(isHidToImitate, dtype=np.int16)
+outputActionIDs_shkp1 = np.asarray(outputActionIDs_shkp1, dtype=np.int16)
+outputSpeechClusterIDs_shkp1 = np.asarray(outputSpeechClusterIDs_shkp1, dtype=np.int16)
+outputSpatialInfo_shkp1 = np.asarray(outputSpatialInfo_shkp1, dtype=np.int16)
+outputSpeechClusterIsJunk_shkp1 = np.asarray(outputSpeechClusterIsJunk_shkp1, dtype=np.int16)
 
-np.save(sessionDir+"/outputActionIDs", outputActionIDs)
-np.save(sessionDir+"/outputSpeechClusterIDs", outputSpeechClusterIDs)
-np.save(sessionDir+"/outputSpatialInfo", outputSpatialInfo)
-np.save(sessionDir+"/toIgnore", toIgnore)
-np.save(sessionDir+"/isHidToImitate", isHidToImitate)
+outputActionIDs_shkp2 = np.asarray(outputActionIDs_shkp2, dtype=np.int16)
+outputSpeechClusterIDs_shkp2 = np.asarray(outputSpeechClusterIDs_shkp2, dtype=np.int16)
+outputSpatialInfo_shkp2 = np.asarray(outputSpatialInfo_shkp2, dtype=np.int16)
+outputSpeechClusterIsJunk_shkp2 = np.asarray(outputSpeechClusterIsJunk_shkp2, dtype=np.int16)
+
+outputDidActionBits = np.asarray(outputDidActionBits, dtype=np.int16)
 
 
 inputVectorsNonSpeech = np.stack(inputVectorsNonSpeech, axis=0)
@@ -629,6 +743,17 @@ inputVectorsCombined = inputVectorsCombined.astype(np.float32)
 np.save(sessionDir+"/inputVectorsCombined", inputVectorsCombined)
 
 
+np.save(sessionDir+"/outputActionIDs_shkp1", outputActionIDs_shkp1)
+np.save(sessionDir+"/outputSpeechClusterIDs_shkp1", outputSpeechClusterIDs_shkp1)
+np.save(sessionDir+"/outputSpatialInfo_shkp1", outputSpatialInfo_shkp1)
+np.save(sessionDir+"/outputSpeechClusterIsJunk_shkp1", outputSpeechClusterIsJunk_shkp1)
+
+np.save(sessionDir+"/outputActionIDs_shkp2", outputActionIDs_shkp2)
+np.save(sessionDir+"/outputSpeechClusterIDs_shkp2", outputSpeechClusterIDs_shkp2)
+np.save(sessionDir+"/outputSpatialInfo_shkp2", outputSpatialInfo_shkp2)
+np.save(sessionDir+"/outputSpeechClusterIsJunk_shkp2", outputSpeechClusterIsJunk_shkp2)
+
+np.save(sessionDir+"/outputDidActionBits", outputDidActionBits)
 
 
 
@@ -664,7 +789,6 @@ for i in range(len(inputs)):
 
     for fieldname in fieldnamesNotToDuplicate:
         row[fieldname] = outputs[i][fieldname]
-
     # input
     input = inputs[i]
     for j in range(len(input)):
