@@ -4,7 +4,8 @@
 # Copyright (c) 2023 Malcolm Doering
 #
 #
-# Combine the outputs of the classifier for whether or not to act (baseline 1) and how to act (baseline 2) to get output for evaluation 
+# For predictions using the knowledge management system
+# Combine the outputs of the classifier for whether or not to act (baseline 7) and how to act (baseline 5 / 6) to get output for evaluation 
 #
 
 import os
@@ -14,24 +15,19 @@ import copy
 import tools
 
 inputStep = "0"
+groundTruthParticipant = "shopkeeper2"
 
-englishToJapanese = {"Canon": "キャノン",
-                     "CanonLeft": "キャノンの左",
-                     "CanonRight": "キャノンの右",
-                     "Sony": "ソニー",
-                     "SonyLeft": "ソニーの左",
-                     "SonyRight": "ソニーの右",
-                     "Nikon": "ニコン",
-                     "NikonLeft": "ニコンの左",
-                     "NikonRight": "ニコンの右",
-                     "Printer": "プリンタ",
-                     "PrinterLeft": "プリンタの左",
-                     "PrinterRight": "プリンタの右",
-                     "Counter": "カウンタ",
-                     "Door": "ドア",
-                     "Entrance": "玄関",
-                     "Middle": "真ん中",
-                     "Shelf": "棚"
+englishToJapanese = {"canon_area": "キャノン",
+                     "sony_area": "ソニー",
+                     "nikon_area": "ニコン",
+                     "printer_desk_area": "プリンタ",
+                     "service_counter_area": "カウンタ",
+                     "entrance_area": "玄関",
+                     "shelf_area": "棚",
+                     "None":""
+                     
+                     #"Door": "ドア",
+                     #"Middle": "真ん中",
                      }
 
 uniqueIDToIdentifier = {1: "shopkeeper1",
@@ -42,7 +38,9 @@ uniqueIDToIdentifier = {1: "shopkeeper1",
 robotUniqueID = 3
 
 
-predictionsFilename = "E:/eclipse-log/20240319-162632_analysis_02_BL300/all_predictions_combined.csv"
+#predictionsFilename = "E:/eclipse-log/20240315-134656_analysis_02/all_predictions_combined.csv"
+
+predictionsFilename = "E:/eclipse-log/20240325-134625_analysis_02_testxy/all_predictions_combined.csv"
 
 
 sessionDir = sessionDir = tools.create_session_dir("analysis_03")
@@ -55,9 +53,9 @@ predictionData, _ = tools.load_interaction_data(predictionsFilename)
 # put the data in the proper format for the coding tool and save it
 #
 fieldnames = ["Timestamp", "Turn ID", "Is Used For Verification", "Trial ID", 
+              # "Unique ID", "Utterance", # these fields will have to be different for the knowledge management system because 
               
-              "Unique ID", 
-              #"Utterance", 
+              "Unique ID", # maybe just use this field for something else...
               "S1 Utterance", "S2 Utterance", "C Utterance",
               
               "Robot Utterance Proposed", "Robot Utterance Baseline", 
@@ -68,11 +66,11 @@ fieldnames = ["Timestamp", "Turn ID", "Is Used For Verification", "Trial ID",
               #"Unique ID 6 X", "Unique ID 6 Y",
               "Unique ID 1 X", "Unique ID 1 Y",
               #"Rater1 Attention 1", "Rater1 Attention 2", "Rater1 Attention 3", "Rater1 Attention 4", "Rater1 Attention 5", 
-              "Rater1 Should Shopkeeper Respond", "Rater1 Proposed", "Rater1 Baseline", "Rater1 Proposed Reason", "Rater1 Baseline Reason", 
+              "Rater1 Should Shopkeeper Respond", "Rater1 Proposed", "Rater1 Baseline", 
               #"Rater2 Attention 1", "Rater2 Attention 2", "Rater2 Attention 3", "Rater2 Attention 4", "Rater2 Attention 5", 
-              "Rater2 Should Shopkeeper Respond", "Rater2 Proposed", "Rater2 Baseline", "Rater2 Proposed Reason", "Rater2 Baseline Reason", 
+              "Rater2 Should Shopkeeper Respond", "Rater2 Proposed", "Rater2 Baseline", 
               #"Rater3 Attention 1", "Rater3 Attention 2", "Rater3 Attention 3", "Rater3 Attention 4", "Rater3 Attention 5", 
-              "Rater3 Should Shopkeeper Respond", "Rater3 Proposed", "Rater3 Baseline", "Rater3 Proposed Reason", "Rater3 Baseline Reason"] 
+              "Rater3 Should Shopkeeper Respond", "Rater3 Proposed", "Rater3 Baseline"]
               
 rowsForCoding = []
 
@@ -87,13 +85,12 @@ for i in range(len(predictionData)):
     if row["SET"] != "TEST":
         continue
 
-    try:
-        uniqueID = int(row["{}_unique_id".format(inputStep)])
-    except:
-        continue
+    S1_didAction = int(row["{}_SHOPKEEPER_1_DID_ACTION".format(inputStep)])
+    S2_didAction = int(row["{}_SHOPKEEPER_2_DID_ACTION".format(inputStep)])
+    C_didAction = int(row["{}_CUSTOMER_DID_ACTION".format(inputStep)])
     
     
-    identifier = uniqueIDToIdentifier[uniqueID]
+    #identifier = uniqueIDToIdentifier[uniqueID]
     trialID = int(row["TRIAL"])
 
     #if trialID == 880:
@@ -104,76 +101,84 @@ for i in range(len(predictionData)):
         currTrial = trialID
         beforeRobotFirstAction = True
     
-    if uniqueID == robotUniqueID:
+    if S2_didAction:
         beforeRobotFirstAction = False
     
     newRow = {}
     newRow["Timestamp"] = row["{}_time".format(inputStep)]
     newRow["Turn ID"] = row["ID"]
-    newRow["Is Used For Verification"] = 0 if identifier == "shopkeeper2" else 1
+    newRow["Is Used For Verification"] = S1_didAction or C_didAction
     newRow["Trial ID"] = trialID
-    newRow["Unique ID"] = uniqueID
+    newRow["Unique ID"] = -1 # TODO
 
 
     
-
+    
     #
     # the last action before the robot action prediction
     #
-    currLocation = row["{}_{}_currentLocation_name".format(inputStep, identifier)]
-    motOrigin = row["{}_{}_motionOrigin_name".format(inputStep, identifier)]
-    motTarget = row["{}_{}_motionTarget_name".format(inputStep, identifier)]
+    def get_action(identifier):
+        currLocation = row["{}_{}_from_{}_currentLocation_name".format(inputStep, identifier, groundTruthParticipant)]
+        motOrigin = row["{}_{}_from_{}_motionOrigin_name".format(inputStep, identifier, groundTruthParticipant)]
+        motTarget = row["{}_{}_from_{}_motionTarget_name".format(inputStep, identifier, groundTruthParticipant)]
 
-    speech = row["{}_participant_speech".format(inputStep)]
+        speech = row["{}_{}_from_{}_speech".format(inputStep, identifier, groundTruthParticipant)]
 
-    if currLocation == "None" and motTarget == "None" and motOrigin != "None":
-        # look ahead to find out where the participant is moving to
-        for j in range(i, len(predictionData)):
-            if trialID != int(predictionData[j]["TRIAL"]):
-                break
-            
-            # TODO this code doesn't do anything...
-            targ = row["{}_{}_currentLocation_name".format(inputStep, identifier)]
-            if targ != None:
-                motTarget = targ
-                break
+        if currLocation == "None" and motTarget == "None" and motOrigin != "None":
+            # look ahead to find out where the participant is moving to
+            for j in range(i, len(predictionData)):
+                if trialID != int(predictionData[j]["TRIAL"]):
+                    break
+                
+                # TODO this code doesn't do anything...
+                targ = row["{}_{}_from_{}_currentLocation_name".format(inputStep, identifier, groundTruthParticipant)]
+                if targ != None:
+                    motTarget = targ
+                    break
+        
+        if currLocation != "None":
+            motion = englishToJapanese[currLocation]
+        elif motOrigin != "None" and motTarget != "None":
+            motion = englishToJapanese[motOrigin] + "→" + englishToJapanese[motTarget]
+        elif motOrigin != "None" and motTarget == "None":
+            motion = englishToJapanese[motOrigin] + "→どこか"
+        else:
+            motion = ""
+            print("WARNING: Invalid motion!", newRow["Trial ID"], newRow["Turn ID"])
+        
+        motion = "【" + motion + "】"
+        fullAction = motion + "　「" + speech + "」"
+
+        return fullAction
     
-    if currLocation != "None":
-        motion = englishToJapanese[currLocation]
-    elif motOrigin != "None" and motTarget != "None":
-        motion = englishToJapanese[motOrigin] + "→" + englishToJapanese[motTarget]
-    elif motOrigin != "None" and motTarget == "None":
-        motion = englishToJapanese[motOrigin] + "→どこか"
+
+    if S1_didAction:
+        newRow["S1 Utterance"] = get_action("shopkeeper1") 
     else:
-        motion = ""
-        print("WARNING: Invalid motion!", newRow["Trial ID"], newRow["Turn ID"])
+        newRow["S1 Utterance"] = ""
     
-    motion = "【" + motion + "】"
-    action = motion + "　「" + speech + "」"
-
-    if uniqueIDToIdentifier[uniqueID] == "shopkeeper1":
-        newRow["S1 Utterance"] = action
-    elif uniqueIDToIdentifier[uniqueID] == "shopkeeper2":
-        newRow["S2 Utterance"] = action
-    elif uniqueIDToIdentifier[uniqueID] == "customer2":
-        newRow["C Utterance"] = action
+    if S2_didAction:
+        newRow["S2 Utterance"] = get_action("shopkeeper2") 
     else:
-        print("WARNING: Invalid unique ID!", uniqueID)
+        newRow["S2 Utterance"] = ""
     
-    
-    "S1 Utterance", "S2 Utterance", "C Utterance",
+    if C_didAction:
+        newRow["C Utterance"] = get_action("customer") 
+    else:
+        newRow["C Utterance"] = ""
+
     
     #
     # the proposed robot action prediction
     #
 
     # the robot's spatial info before its predicted action (to be used for <no action> and getting the motion origin)
-    robCurrLocation = row["{}_shopkeeper2_currentLocation_name".format(inputStep)]
-    robMotOrigin = row["{}_shopkeeper2_motionOrigin_name".format(inputStep)]
-    robMotTarget = row["{}_shopkeeper2_motionTarget_name".format(inputStep)]
+    robCurrLocation = row["{}_shopkeeper2_from_{}_currentLocation_name".format(inputStep, groundTruthParticipant)]
+    robMotOrigin = row["{}_shopkeeper2_from_{}_motionOrigin_name".format(inputStep, groundTruthParticipant)]
+    robMotTarget = row["{}_shopkeeper2_from_{}_motionTarget_name".format(inputStep, groundTruthParticipant)]
     
     if beforeRobotFirstAction and robCurrLocation == "None" and robMotOrigin == "None":
-        robCurrLocation = "Entrance"
+        robCurrLocation = "entrance_area"
 
 
 
@@ -186,10 +191,10 @@ for i in range(len(predictionData)):
             location = robMotOrigin
             print("WARNING: Motion origin without motion target...")
         else:
-            location = ""
+            location = "None"
             print("WARNING: Invalid motion for proposed robot <no action> A!", newRow["Trial ID"], newRow["Turn ID"])
         
-        proposedRobotAction = "【" + englishToJapanese[location] + "】　「」"
+        #proposedRobotAction = "【" + englishToJapanese[location] + "】　「」"
 
         proposedRobotAction = "<NO ACTION>"
 
@@ -215,14 +220,29 @@ for i in range(len(predictionData)):
     
     newRow["Robot Utterance Baseline"] = ""
     
-        
-    newRow["Unique ID 1 X"] = row["{}_shopkeeper1_x".format(inputStep)]
-    newRow["Unique ID 1 Y"] = row["{}_shopkeeper1_y".format(inputStep)]
-    newRow["Unique ID 2 X"] = row["{}_customer2_x".format(inputStep)]
-    newRow["Unique ID 2 Y"] = row["{}_customer2_y".format(inputStep)]
-    newRow["Unique ID 3 X"] = row["{}_shopkeeper2_x".format(inputStep)]
-    newRow["Unique ID 3 Y"] = row["{}_shopkeeper2_y".format(inputStep)]
+    # TODO
+    try:
+        newRow["Unique ID 1 X"] = float(row["{}_shopkeeper1_x".format(inputStep)]) * 1000
+        newRow["Unique ID 1 Y"] = float(row["{}_shopkeeper1_y".format(inputStep)]) * 1000
+    except:
+        newRow["Unique ID 1 X"] = 0
+        newRow["Unique ID 1 Y"] = 0
     
+    try:
+        newRow["Unique ID 2 X"] = float(row["{}_customer_x".format(inputStep)]) * 1000
+        newRow["Unique ID 2 Y"] = float(row["{}_customer_y".format(inputStep)]) * 1000
+    except:
+        newRow["Unique ID 2 X"] = 0
+        newRow["Unique ID 2 Y"] = 0
+    
+    try:
+        newRow["Unique ID 3 X"] = float(row["{}_shopkeeper2_x".format(inputStep)]) * 1000
+        newRow["Unique ID 3 Y"] = float(row["{}_shopkeeper2_y".format(inputStep)]) * 1000
+    except:
+        newRow["Unique ID 3 X"] = 0
+        newRow["Unique ID 3 Y"] = 0
+
+
     """
     newRow["Unique ID 4 X"] = ""
     newRow["Unique ID 4 Y"] = ""
